@@ -227,17 +227,6 @@ def on_message(client, userdata, msg):
         ts = data.get("timestamp", now)
         save_feeding_event(action, amount, ts)
 
-        # send confirmation back
-        status_data = {
-            "status": "completed",
-            "amount": amount,
-            "timestamp": ts
-        }
-        try:
-            client.publish(config.TOPIC_FEEDING_STATUS, json.dumps(status_data))
-        except Exception:
-            pass
-
     elif topic == config.TOPIC_LIGHT_STATUS:
         state = data.get("state", "off")
         source = data.get("source", "unknown")

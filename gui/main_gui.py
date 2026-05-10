@@ -35,7 +35,12 @@ def add_event(level, message):
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        client.subscribe(config.TOPIC_WILDCARD)
+        # subscribe only to topics we need, not wildcard
+        client.subscribe(config.TOPIC_TEMPERATURE)
+        client.subscribe(config.TOPIC_PH)
+        client.subscribe(config.TOPIC_LIGHT_STATUS)
+        client.subscribe(config.TOPIC_FEEDING_STATUS)
+        client.subscribe(config.TOPIC_ALERTS)
         add_event("INFO", "Connected to MQTT broker")
     else:
         add_event("WARNING", "Failed to connect to broker")
@@ -72,12 +77,9 @@ def on_message(client, userdata, msg):
         light_state = data.get("state", "off")
         state["light"] = light_state
 
-    elif topic == config.TOPIC_FEEDING_CMD:
+    elif topic == config.TOPIC_FEEDING_STATUS:
         state["last_feed"] = datetime.now().strftime("%H:%M:%S")
         add_event("INFO", "Fish fed")
-
-    elif topic == config.TOPIC_FEEDING_STATUS:
-        add_event("INFO", "Feeding confirmed")
 
     elif topic == config.TOPIC_ALERTS:
         level = data.get("level", "WARNING")

@@ -10,12 +10,15 @@ import config
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Feeding button connected to broker")
+        print("Feeding emulator connected to broker")
+        # listen for feeding commands from the GUI
+        client.subscribe(config.TOPIC_FEEDING_CMD)
+        print("Subscribed to " + config.TOPIC_FEEDING_CMD)
     else:
         print("Connection failed with code: " + str(rc))
 
 def on_disconnect(client, userdata, rc):
-    print("Feeding button disconnected, reconnecting...")
+    print("Feeding emulator disconnected, reconnecting...")
     while True:
         try:
             client.reconnect()
@@ -24,10 +27,36 @@ def on_disconnect(client, userdata, rc):
         except Exception:
             time.sleep(5)
 
+def on_message(client, userdata, msg):
+    try:
+        data = json.loads(msg.payload.decode())
+        action = data.get("action", "")
+        amount = data.get("amount", "normal")
+        now = datetime.now().isoformat()
+
+        if action == "feed":
+            print(f"[{now}] Received feed command - dispensing {amount} amount of food")
+
+            # send back confirmation that feeding was done
+            status_data = {
+                "status": "completed",
+                "amount": amount,
+                "timestamp": now
+            }
+            try:
+                client.publish(config.TOPIC_FEEDING_STATUS, json.dumps(status_data))
+                print(f"[{now}] Feeding completed!")
+            except Exception as e:
+                print("Error publishing feed status: " + str(e))
+
+    except json.JSONDecodeError:
+        print("Got bad JSON on feeding topic")
+
 def main():
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
+    client.on_message = on_message
 
     try:
         client.connect(config.BROKER_HOST, config.BROKER_PORT, 60)
@@ -35,30 +64,13 @@ def main():
         print("Could not connect to broker: {}".format(e))
         return
 
-    client.loop_start()
-
-    print("Feeding button emulator started. Press Ctrl+C to stop.")
+    print("Feeding emulator started. Waiting for feed commands...")
+    print("Press Ctrl+C to stop.")
     try:
-        while True:
-            now = datetime.now().isoformat()
-
-            feed_data = {
-                "action": "feed",
-                "amount": "normal",
-                "timestamp": now
-            }
-            try:
-                client.publish(config.TOPIC_FEEDING_CMD, json.dumps(feed_data))
-                print(f"[{now}] Feeding button pressed - dispensing food")
-            except Exception as e:
-                print("Error publishing feed command: " + str(e))
-
-            time.sleep(config.FEEDING_INTERVAL)
-
+        client.loop_forever()
     except KeyboardInterrupt:
-        print("\nFeeding button stopped.")
+        print("\nFeeding emulator stopped.")
     finally:
-        client.loop_stop()
         client.disconnect()
 
 if __name__ == "__main__":
