@@ -9,7 +9,8 @@ import threading
 from datetime import datetime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QListWidget,
-                             QListWidgetItem, QGroupBox, QFrame)
+                             QListWidgetItem, QGroupBox, QFrame, QDoubleSpinBox,
+                             QGridLayout)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QFont, QColor
 import config
@@ -144,10 +145,13 @@ class AquariumDashboard(QMainWindow):
         title.setStyleSheet("color: #2c3e50; margin: 10px;")
         main_layout.addWidget(title)
 
-        # top row: sensors + controls side by side
-        top_layout = QHBoxLayout()
+        # main content: left side + right side
+        content_layout = QHBoxLayout()
 
-        # --- Section 1: Live Sensor Readings ---
+        # ========== LEFT SIDE: Readings + Log ==========
+        left_layout = QVBoxLayout()
+
+        # sensor readings
         sensor_group = QGroupBox("Live Sensor Readings")
         sensor_group.setFont(QFont("Arial", 11, QFont.Bold))
         sensor_layout = QVBoxLayout()
@@ -162,26 +166,43 @@ class AquariumDashboard(QMainWindow):
         self.ph_label.setAlignment(Qt.AlignCenter)
         sensor_layout.addWidget(self.ph_label)
 
-        self.update_label = QLabel("Last update: --")
-        self.update_label.setAlignment(Qt.AlignCenter)
-        self.update_label.setStyleSheet("color: #7f8c8d; font-size: 11px;")
-        sensor_layout.addWidget(self.update_label)
-
-        sensor_group.setLayout(sensor_layout)
-        top_layout.addWidget(sensor_group)
-
-        # --- Section 2: Controls ---
-        control_group = QGroupBox("Aquarium Controls")
-        control_group.setFont(QFont("Arial", 11, QFont.Bold))
-        control_layout = QVBoxLayout()
-
         self.light_label = QLabel("Light: OFF")
         self.light_label.setFont(QFont("Arial", 16, QFont.Bold))
         self.light_label.setAlignment(Qt.AlignCenter)
         self.light_label.setStyleSheet("background-color: #555; color: white; padding: 10px; border-radius: 5px;")
-        control_layout.addWidget(self.light_label)
+        sensor_layout.addWidget(self.light_label)
 
-        # light toggle buttons
+        self.update_label = QLabel("Last update: --")
+        self.update_label.setAlignment(Qt.AlignCenter)
+        self.update_label.setFont(QFont("Arial", 13))
+        self.update_label.setStyleSheet("color: #7f8c8d;")
+        sensor_layout.addWidget(self.update_label)
+
+        sensor_group.setLayout(sensor_layout)
+        left_layout.addWidget(sensor_group)
+
+        # status log
+        log_group = QGroupBox("Status Log")
+        log_group.setFont(QFont("Arial", 11, QFont.Bold))
+        log_layout = QVBoxLayout()
+
+        self.event_list = QListWidget()
+        self.event_list.setFont(QFont("Consolas", 10))
+        log_layout.addWidget(self.event_list)
+
+        log_group.setLayout(log_layout)
+        left_layout.addWidget(log_group)
+
+        content_layout.addLayout(left_layout, stretch=3)
+
+        # ========== RIGHT SIDE: Controls ==========
+        right_layout = QVBoxLayout()
+
+        # light controls
+        light_group = QGroupBox("Light Control")
+        light_group.setFont(QFont("Arial", 11, QFont.Bold))
+        light_ctrl_layout = QVBoxLayout()
+
         light_btn_layout = QHBoxLayout()
         self.light_on_btn = QPushButton("Light ON")
         self.light_on_btn.setStyleSheet("background-color: #f1c40f; padding: 8px; font-weight: bold;")
@@ -192,35 +213,111 @@ class AquariumDashboard(QMainWindow):
         self.light_off_btn.setStyleSheet("background-color: #95a5a6; padding: 8px; font-weight: bold;")
         self.light_off_btn.clicked.connect(self.turn_light_off)
         light_btn_layout.addWidget(self.light_off_btn)
-        control_layout.addLayout(light_btn_layout)
+        light_ctrl_layout.addLayout(light_btn_layout)
+
+        light_group.setLayout(light_ctrl_layout)
+        right_layout.addWidget(light_group)
+
+        # feeding controls
+        feed_group = QGroupBox("Feeding")
+        feed_group.setFont(QFont("Arial", 11, QFont.Bold))
+        feed_layout = QVBoxLayout()
 
         self.feed_btn = QPushButton("Feed Now")
         self.feed_btn.setFont(QFont("Arial", 12, QFont.Bold))
         self.feed_btn.setStyleSheet("background-color: #3498db; color: white; padding: 12px; border-radius: 5px;")
         self.feed_btn.clicked.connect(self.feed_now)
-        control_layout.addWidget(self.feed_btn)
+        feed_layout.addWidget(self.feed_btn)
 
         self.feed_label = QLabel("Last feeding: --")
         self.feed_label.setAlignment(Qt.AlignCenter)
-        self.feed_label.setStyleSheet("color: #7f8c8d; font-size: 11px;")
-        control_layout.addWidget(self.feed_label)
+        self.feed_label.setFont(QFont("Arial", 13))
+        self.feed_label.setStyleSheet("color: #7f8c8d;")
+        feed_layout.addWidget(self.feed_label)
 
-        control_group.setLayout(control_layout)
-        top_layout.addWidget(control_group)
+        feed_group.setLayout(feed_layout)
+        right_layout.addWidget(feed_group)
 
-        main_layout.addLayout(top_layout)
+        # temperature thresholds
+        temp_group = QGroupBox("Temperature Thresholds (°C)")
+        temp_group.setFont(QFont("Arial", 11, QFont.Bold))
+        temp_grid = QGridLayout()
 
-        # --- Section 3: Status Log ---
-        log_group = QGroupBox("Status Log")
-        log_group.setFont(QFont("Arial", 11, QFont.Bold))
-        log_layout = QVBoxLayout()
+        temp_grid.addWidget(QLabel("Min Normal:"), 0, 0)
+        self.temp_min_normal = QDoubleSpinBox()
+        self.temp_min_normal.setRange(0, 50)
+        self.temp_min_normal.setValue(config.TEMP_MIN_NORMAL)
+        self.temp_min_normal.valueChanged.connect(self.update_thresholds)
+        temp_grid.addWidget(self.temp_min_normal, 0, 1)
 
-        self.event_list = QListWidget()
-        self.event_list.setFont(QFont("Consolas", 10))
-        log_layout.addWidget(self.event_list)
+        temp_grid.addWidget(QLabel("Max Normal:"), 1, 0)
+        self.temp_max_normal = QDoubleSpinBox()
+        self.temp_max_normal.setRange(0, 50)
+        self.temp_max_normal.setValue(config.TEMP_MAX_NORMAL)
+        self.temp_max_normal.valueChanged.connect(self.update_thresholds)
+        temp_grid.addWidget(self.temp_max_normal, 1, 1)
 
-        log_group.setLayout(log_layout)
-        main_layout.addWidget(log_group)
+        temp_grid.addWidget(QLabel("Min Warning:"), 2, 0)
+        self.temp_min_warning = QDoubleSpinBox()
+        self.temp_min_warning.setRange(0, 50)
+        self.temp_min_warning.setValue(config.TEMP_MIN_WARNING)
+        self.temp_min_warning.valueChanged.connect(self.update_thresholds)
+        temp_grid.addWidget(self.temp_min_warning, 2, 1)
+
+        temp_grid.addWidget(QLabel("Max Warning:"), 3, 0)
+        self.temp_max_warning = QDoubleSpinBox()
+        self.temp_max_warning.setRange(0, 50)
+        self.temp_max_warning.setValue(config.TEMP_MAX_WARNING)
+        self.temp_max_warning.valueChanged.connect(self.update_thresholds)
+        temp_grid.addWidget(self.temp_max_warning, 3, 1)
+
+        temp_group.setLayout(temp_grid)
+        right_layout.addWidget(temp_group)
+
+        # pH thresholds
+        ph_group = QGroupBox("pH Thresholds")
+        ph_group.setFont(QFont("Arial", 11, QFont.Bold))
+        ph_grid = QGridLayout()
+
+        ph_grid.addWidget(QLabel("Min Normal:"), 0, 0)
+        self.ph_min_normal = QDoubleSpinBox()
+        self.ph_min_normal.setRange(0, 14)
+        self.ph_min_normal.setSingleStep(0.1)
+        self.ph_min_normal.setValue(config.PH_MIN_NORMAL)
+        self.ph_min_normal.valueChanged.connect(self.update_thresholds)
+        ph_grid.addWidget(self.ph_min_normal, 0, 1)
+
+        ph_grid.addWidget(QLabel("Max Normal:"), 1, 0)
+        self.ph_max_normal = QDoubleSpinBox()
+        self.ph_max_normal.setRange(0, 14)
+        self.ph_max_normal.setSingleStep(0.1)
+        self.ph_max_normal.setValue(config.PH_MAX_NORMAL)
+        self.ph_max_normal.valueChanged.connect(self.update_thresholds)
+        ph_grid.addWidget(self.ph_max_normal, 1, 1)
+
+        ph_grid.addWidget(QLabel("Min Warning:"), 2, 0)
+        self.ph_min_warning = QDoubleSpinBox()
+        self.ph_min_warning.setRange(0, 14)
+        self.ph_min_warning.setSingleStep(0.1)
+        self.ph_min_warning.setValue(config.PH_MIN_WARNING)
+        self.ph_min_warning.valueChanged.connect(self.update_thresholds)
+        ph_grid.addWidget(self.ph_min_warning, 2, 1)
+
+        ph_grid.addWidget(QLabel("Max Warning:"), 3, 0)
+        self.ph_max_warning = QDoubleSpinBox()
+        self.ph_max_warning.setRange(0, 14)
+        self.ph_max_warning.setSingleStep(0.1)
+        self.ph_max_warning.setValue(config.PH_MAX_WARNING)
+        self.ph_max_warning.valueChanged.connect(self.update_thresholds)
+        ph_grid.addWidget(self.ph_max_warning, 3, 1)
+
+        ph_group.setLayout(ph_grid)
+        right_layout.addWidget(ph_group)
+
+        right_layout.addStretch()
+        content_layout.addLayout(right_layout, stretch=2)
+
+        main_layout.addLayout(content_layout)
 
     def update_display(self):
         # update temperature
@@ -271,6 +368,17 @@ class AquariumDashboard(QMainWindow):
                 item.setForeground(QColor("#3498db"))
             self.event_list.addItem(item)
 
+    def update_thresholds(self):
+        # update config values live from the spinboxes
+        config.TEMP_MIN_NORMAL = self.temp_min_normal.value()
+        config.TEMP_MAX_NORMAL = self.temp_max_normal.value()
+        config.TEMP_MIN_WARNING = self.temp_min_warning.value()
+        config.TEMP_MAX_NORMAL = self.temp_max_warning.value()
+        config.PH_MIN_NORMAL = self.ph_min_normal.value()
+        config.PH_MAX_NORMAL = self.ph_max_normal.value()
+        config.PH_MIN_WARNING = self.ph_min_warning.value()
+        config.PH_MAX_WARNING = self.ph_max_warning.value()
+
     def feed_now(self):
         now = datetime.now().isoformat()
         feed_data = {
@@ -280,7 +388,6 @@ class AquariumDashboard(QMainWindow):
         }
         try:
             self.mqtt_client.publish(config.TOPIC_FEEDING_CMD, json.dumps(feed_data))
-            add_event("INFO", "Manual feeding triggered from GUI")
         except Exception as e:
             add_event("WARNING", "Failed to send feed command")
 
@@ -288,7 +395,6 @@ class AquariumDashboard(QMainWindow):
         cmd = {"state": "on", "timestamp": datetime.now().isoformat()}
         try:
             self.mqtt_client.publish(config.TOPIC_LIGHT_CMD, json.dumps(cmd))
-            add_event("INFO", "Light ON command sent from GUI")
         except Exception:
             add_event("WARNING", "Failed to send light command")
 
@@ -296,7 +402,6 @@ class AquariumDashboard(QMainWindow):
         cmd = {"state": "off", "timestamp": datetime.now().isoformat()}
         try:
             self.mqtt_client.publish(config.TOPIC_LIGHT_CMD, json.dumps(cmd))
-            add_event("INFO", "Light OFF command sent from GUI")
         except Exception:
             add_event("WARNING", "Failed to send light command")
 
