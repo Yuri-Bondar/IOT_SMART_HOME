@@ -75,6 +75,39 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feeding_schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            time TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM feeding_schedules")
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany(
+            "INSERT INTO feeding_schedules (name, time, enabled) VALUES (?, ?, ?)",
+            [
+                ("Morning Feed",   "08:00", 1),
+                ("Afternoon Feed", "12:00", 1),
+                ("Evening Feed",   "18:00", 1),
+                ("Night Check",    "22:00", 0),
+            ]
+        )
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS light_schedule (
+            id INTEGER PRIMARY KEY,
+            on_time  TEXT NOT NULL DEFAULT "08:00",
+            off_time TEXT NOT NULL DEFAULT "22:00"
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM light_schedule")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "INSERT INTO light_schedule (id, on_time, off_time) VALUES (1, '08:00', '22:00')"
+        )
+
     conn.commit()
     conn.close()
     print("Database initialized at: " + DB_PATH)
