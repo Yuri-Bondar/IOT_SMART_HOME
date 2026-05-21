@@ -10,13 +10,14 @@ import config
 
 # keep track of the light state
 light_on = False
+schedule_on  = "08:00"
+schedule_off = "22:00"
+
+TOPIC_LIGHT_SCHEDULE = config.TOPIC_PREFIX + "/config/light_schedule"
 
 def get_scheduled_state():
-    # light should be ON between 08:00 and 22:00
-    hour = datetime.now().hour
-    if 8 <= hour < 22:
-        return True
-    return False
+    now_str = datetime.now().strftime("%H:%M")
+    return schedule_on <= now_str < schedule_off
 
 def publish_light_status(client, state, source):
     now = datetime.now().isoformat()
@@ -34,9 +35,9 @@ def publish_light_status(client, state, source):
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Light relay connected to broker")
-        # subscribe to light commands
         client.subscribe(config.TOPIC_LIGHT_CMD)
-        print("Subscribed to " + config.TOPIC_LIGHT_CMD)
+        client.subscribe(TOPIC_LIGHT_SCHEDULE)
+        print("Subscribed to " + config.TOPIC_LIGHT_CMD + " and " + TOPIC_LIGHT_SCHEDULE)
     else:
         print("Connection failed with code: " + str(rc))
 
@@ -51,9 +52,17 @@ def on_disconnect(client, userdata, rc):
             time.sleep(5)
 
 def on_message(client, userdata, msg):
-    global light_on
+    global light_on, schedule_on, schedule_off
     try:
         data = json.loads(msg.payload.decode())
+    except json.JSONDecodeError:
+        print("Got bad JSON on topic: " + msg.topic)
+        return
+    if msg.topic == TOPIC_LIGHT_SCHEDULE:
+        schedule_on  = data.get("on_time",  schedule_on)
+        schedule_off = data.get("off_time", schedule_off)
+        print("Light schedule updated: ON={} OFF={}".format(schedule_on, schedule_off))
+    elif msg.topic == config.TOPIC_LIGHT_CMD:
         command = data.get("state", "").lower()
         if command == "on":
             light_on = True
@@ -63,8 +72,6 @@ def on_message(client, userdata, msg):
             publish_light_status(client, False, "manual")
         else:
             print("Unknown light command: " + str(command))
-    except json.JSONDecodeError:
-        print("Got bad JSON on light command topic")
 
 def main():
     global light_on
@@ -89,15 +96,10 @@ def main():
 
     try:
         while True:
-            # check schedule every 10 seconds
             scheduled = get_scheduled_state()
             if scheduled != light_on:
                 light_on = scheduled
                 publish_light_status(client, light_on, "schedule")
-            else:
-                # still publish current state so GUI stays updated
-                publish_light_status(client, light_on, "schedule")
-
             time.sleep(10)
 
     except KeyboardInterrupt:
