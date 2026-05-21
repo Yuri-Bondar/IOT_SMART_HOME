@@ -17,6 +17,8 @@ from PyQt5.QtGui import (
 )
 import config
 
+TOPIC_THRESHOLDS = config.TOPIC_PREFIX + "/config/thresholds"
+
 # ── Palette ──────────────────────────────────────────────────────────────────
 PRIMARY    = "#0D4F5C"
 PRIMARY2   = "#1A7A8A"
@@ -42,6 +44,22 @@ state = {
     "temp_history": [],
     "ph_history": [],
     "system_status": "Waiting...",
+}
+
+_DEF_WARN_PCT = 10
+temp_warn_pct = _DEF_WARN_PCT
+ph_warn_pct   = _DEF_WARN_PCT
+_ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
+_ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
+allowed_ranges = {
+    "temp_safe_min": config.TEMP_MIN_NORMAL,
+    "temp_safe_max": config.TEMP_MAX_NORMAL,
+    "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_WARN_PCT / 100, 1),
+    "temp_warn_max": round(config.TEMP_MAX_NORMAL - _ts * _DEF_WARN_PCT / 100, 1),
+    "ph_safe_min":   config.PH_MIN_NORMAL,
+    "ph_safe_max":   config.PH_MAX_NORMAL,
+    "ph_warn_min":   round(config.PH_MIN_NORMAL + _ps * _DEF_WARN_PCT / 100, 1),
+    "ph_warn_max":   round(config.PH_MAX_NORMAL - _ps * _DEF_WARN_PCT / 100, 1),
 }
 
 def add_event(level, message):
@@ -118,20 +136,24 @@ def start_mqtt_thread(client):
 def get_temp_color(v):
     if v is None:
         return TEXT_MUTED
-    if config.TEMP_MIN_NORMAL <= v <= config.TEMP_MAX_NORMAL:
-        return SUCCESS
-    if config.TEMP_MIN_WARNING <= v <= config.TEMP_MAX_WARNING:
+    s_min = allowed_ranges["temp_safe_min"]; s_max = allowed_ranges["temp_safe_max"]
+    w_min = allowed_ranges["temp_warn_min"]; w_max = allowed_ranges["temp_warn_max"]
+    if v < s_min or v > s_max:
+        return DANGER
+    if v <= w_min or v >= w_max:
         return WARNING
-    return DANGER
+    return SUCCESS
 
 def get_ph_color(v):
     if v is None:
         return TEXT_MUTED
-    if config.PH_MIN_NORMAL <= v <= config.PH_MAX_NORMAL:
-        return SUCCESS
-    if config.PH_MIN_WARNING <= v <= config.PH_MAX_WARNING:
+    s_min = allowed_ranges["ph_safe_min"]; s_max = allowed_ranges["ph_safe_max"]
+    w_min = allowed_ranges["ph_warn_min"]; w_max = allowed_ranges["ph_warn_max"]
+    if v < s_min or v > s_max:
+        return DANGER
+    if v <= w_min or v >= w_max:
         return WARNING
-    return DANGER
+    return SUCCESS
 
 # ── Toggle Switch ─────────────────────────────────────────────────────────────
 from PyQt5.QtCore import pyqtSignal
@@ -260,6 +282,87 @@ class BarChart(QWidget):
             r = min(bar_w / 3, 5)
             p.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), r, r)
 
+# ── Range Slider ─────────────────────────────────────────────────────────────
+class RangeSlider(QWidget):
+    range_changed = pyqtSignal(float, float)
+
+    def __init__(self, mn, mx, lo, hi, parent=None):
+        super().__init__(parent)
+        self._lo, self._hi = lo, hi
+        self._min, self._max = mn, mx
+        self._r = 11
+        self._dragging = None
+        self.setFixedHeight(44)
+        self.setMouseTracking(True)
+
+    def _to_x(self, v):
+        pad = self._r + 4
+        return pad + (v - self._lo) / (self._hi - self._lo) * (self.width() - 2 * pad)
+
+    def _to_val(self, x):
+        pad = self._r + 4
+        v = self._lo + (x - pad) / (self.width() - 2 * pad) * (self._hi - self._lo)
+        return max(self._lo, min(self._hi, round(v, 1)))
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        cy = h // 2
+        pad = self._r + 4
+
+        # track background
+        p.setBrush(QBrush(QColor("#E8EDF2")))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(pad, cy - 3, w - 2 * pad, 6, 3, 3)
+
+        # active zone
+        x1, x2 = self._to_x(self._min), self._to_x(self._max)
+        p.setBrush(QBrush(QColor(ACCENT)))
+        p.drawRoundedRect(int(x1), cy - 3, int(x2 - x1), 6, 3, 3)
+
+        # handles
+        for x in (x1, x2):
+            p.setBrush(QBrush(QColor(PRIMARY)))
+            p.setPen(QPen(QColor(WHITE), 2.5))
+            p.drawEllipse(QPointF(x, cy), self._r, self._r)
+
+    def mousePressEvent(self, e):
+        x1, x2 = self._to_x(self._min), self._to_x(self._max)
+        self._dragging = "min" if abs(e.x() - x1) <= abs(e.x() - x2) else "max"
+        self._move(e.x())
+
+    def mouseMoveEvent(self, e):
+        if self._dragging:
+            self._move(e.x())
+        else:
+            x1, x2 = self._to_x(self._min), self._to_x(self._max)
+            near = abs(e.x() - x1) < self._r + 6 or abs(e.x() - x2) < self._r + 6
+            self.setCursor(Qt.PointingHandCursor if near else Qt.ArrowCursor)
+
+    def mouseReleaseEvent(self, e):
+        self._dragging = None
+
+    def _move(self, x):
+        v = self._to_val(x)
+        if self._dragging == "min":
+            self._min = min(v, round(self._max - 0.1, 1))
+        else:
+            self._max = max(v, round(self._min + 0.1, 1))
+        self.range_changed.emit(self._min, self._max)
+        self.update()
+
+    def set_bounds(self, lo, hi):
+        self._lo, self._hi = lo, hi
+        self._min = max(lo, min(self._min, round(hi - 0.1, 1)))
+        self._max = min(hi, max(self._max, round(lo + 0.1, 1)))
+        self.update()
+
+    def set_values(self, mn, mx):
+        self._min = max(self._lo, min(round(mn, 1), round(self._hi - 0.1, 1)))
+        self._max = min(self._hi, max(round(mx, 1), round(self._lo + 0.1, 1)))
+        self.update()
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def hdivider():
     f = QFrame()
@@ -279,7 +382,7 @@ def badge(text, color):
     l.setAlignment(Qt.AlignCenter)
     return l
 
-CARD_STYLE = f"background:{WHITE}; border-radius:20px; border:1px solid #E8EDF2;"
+CARD_STYLE = f"background:{WHITE}; border-radius:20px;"
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 class DashboardPage(QScrollArea):
@@ -324,7 +427,6 @@ class DashboardPage(QScrollArea):
         # Controls card
         ctrl = QFrame(); ctrl.setStyleSheet(CARD_STYLE)
         cl = QVBoxLayout(ctrl); cl.setContentsMargins(24,24,24,24); cl.setSpacing(18)
-        # light row
         lr = QHBoxLayout(); lr.setSpacing(16)
         ic = QLabel("💡"); ic.setFixedSize(56,56); ic.setAlignment(Qt.AlignCenter)
         ic.setStyleSheet(f"background:{ACCENT};border-radius:28px;font-size:26px;")
@@ -338,7 +440,6 @@ class DashboardPage(QScrollArea):
         self.light_tog.toggled.connect(self._on_light)
         lr.addWidget(self.light_tog)
         cl.addLayout(lr)
-        # feed button
         fb = QPushButton("  🍽  FEED NOW"); fb.setFixedHeight(70)
         fb.setStyleSheet(f"QPushButton{{background:{PRIMARY};color:white;font-size:20px;"
                          f"font-weight:700;border-radius:16px;border:none;}}"
@@ -445,6 +546,7 @@ class DashboardPage(QScrollArea):
 class StatsPage(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._period = 0
         self.setWidgetResizable(True); self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setStyleSheet(f"background:{BG};")
@@ -454,20 +556,22 @@ class StatsPage(QScrollArea):
         lay.addWidget(self._txt("Analytics", TEXT_DARK, 38, True))
         lay.addWidget(self._txt("Monitoring aquatic equilibrium over time.", TEXT_MUTED, 18))
 
-        # Pills
+        # Period pills
         pf = QFrame(); pf.setStyleSheet("background:#E8EDF2;border-radius:14px;")
         pl = QHBoxLayout(pf); pl.setContentsMargins(6,6,6,6); pl.setSpacing(6)
-        for i, t in enumerate(["Day","Week","Month"]):
+        self._period_btns = []
+        self._active_pill = (f"background:{PRIMARY};color:white;border-radius:10px;"
+                             f"font-weight:600;font-size:18px;padding:8px 22px;border:none;")
+        self._inactive_pill = (f"background:transparent;color:{TEXT_MID};border-radius:10px;"
+                               f"font-size:18px;padding:8px 22px;border:none;")
+        for i, t in enumerate(["Day", "Week", "Month"]):
             b = QPushButton(t)
-            if i == 0:
-                b.setStyleSheet(f"background:{PRIMARY};color:white;border-radius:10px;"
-                                f"font-weight:600;font-size:18px;padding:8px 22px;border:none;")
-            else:
-                b.setStyleSheet(f"background:transparent;color:{TEXT_MID};border-radius:10px;"
-                                f"font-size:18px;padding:8px 22px;border:none;")
+            b.setStyleSheet(self._active_pill if i == 0 else self._inactive_pill)
+            b.clicked.connect(lambda _, idx=i: self._set_period(idx))
             pl.addWidget(b)
-        ph = QHBoxLayout(); ph.addWidget(pf); ph.addStretch()
-        lay.addLayout(ph)
+            self._period_btns.append(b)
+        ph_row = QHBoxLayout(); ph_row.addWidget(pf); ph_row.addStretch()
+        lay.addLayout(ph_row)
 
         # Temperature chart card
         tc = QFrame(); tc.setStyleSheet(CARD_STYLE)
@@ -483,7 +587,7 @@ class StatsPage(QScrollArea):
         self.cur_temp = QLabel("--°C")
         self.cur_temp.setStyleSheet(f"color:{TEXT_DARK};font-size:48px;font-weight:700;")
         tl.addWidget(self.cur_temp)
-        self.temp_chart = LineChart(lambda: state["temp_history"], ACCENT, 18, 35)
+        self.temp_chart = LineChart(self._get_temp_data, ACCENT, 18, 35)
         tl.addWidget(self.temp_chart)
         tf = QHBoxLayout()
         self.temp_avg = QLabel("Avg: --")
@@ -492,6 +596,10 @@ class StatsPage(QScrollArea):
         self.temp_peak.setStyleSheet(f"color:{TEXT_MUTED};font-size:15px;")
         tf.addWidget(self.temp_avg); tf.addStretch(); tf.addWidget(self.temp_peak)
         tl.addLayout(tf)
+        self.temp_target_lbl = self._txt(
+            f"Target: {allowed_ranges['temp_safe_min']}°C – {allowed_ranges['temp_safe_max']}°C",
+            TEXT_MUTED, 15)
+        tl.addWidget(self.temp_target_lbl)
         lay.addWidget(tc)
 
         # pH card
@@ -508,10 +616,13 @@ class StatsPage(QScrollArea):
         self.cur_ph = QLabel("-- pH")
         self.cur_ph.setStyleSheet(f"color:{TEXT_DARK};font-size:48px;font-weight:700;")
         pl2.addWidget(self.cur_ph)
-        self.ph_chart = BarChart(lambda: state["ph_history"], "#A8D5D8", PRIMARY)
+        self.ph_chart = BarChart(self._get_ph_data, "#A8D5D8", PRIMARY)
         pl2.addWidget(self.ph_chart)
         pf2 = QHBoxLayout()
-        pf2.addWidget(self._txt(f"Target: {config.PH_MIN_NORMAL} – {config.PH_MAX_NORMAL}", TEXT_MUTED, 15))
+        self.ph_target_lbl = self._txt(
+            f"Target: {allowed_ranges['ph_safe_min']} – {allowed_ranges['ph_safe_max']}",
+            TEXT_MUTED, 15)
+        pf2.addWidget(self.ph_target_lbl)
         pf2.addStretch()
         self.ph_last = QLabel("Last: -- pH")
         self.ph_last.setStyleSheet(f"color:{TEXT_MUTED};font-size:15px;")
@@ -519,30 +630,30 @@ class StatsPage(QScrollArea):
         pl2.addLayout(pf2)
         lay.addWidget(pc)
 
-        # Photoperiod + Salinity
-        sr = QHBoxLayout(); sr.setSpacing(18)
-        for ico, val, unit in [("☀️","12h","PHOTOPERIOD"),("💧","1.025","SALINITY (SG)")]:
-            card = QFrame(); card.setStyleSheet(CARD_STYLE)
-            cl = QVBoxLayout(card); cl.setContentsMargins(22,22,22,22); cl.setSpacing(6)
-            il = QLabel(ico); il.setStyleSheet("font-size:32px;background:transparent;")
-            cl.addWidget(il); cl.addStretch()
-            vl = QLabel(val); vl.setStyleSheet(f"color:{TEXT_DARK};font-size:32px;font-weight:700;")
-            ul = QLabel(unit); ul.setStyleSheet(f"color:{TEXT_MUTED};font-size:14px;font-weight:600;")
-            cl.addWidget(vl); cl.addWidget(ul)
-            sr.addWidget(card)
-        lay.addLayout(sr)
-
-        # Recent Activity
-        ah = QHBoxLayout()
-        ah.addWidget(self._txt("Recent Activity", TEXT_DARK, 20, True))
-        ah.addStretch()
-        ah.addWidget(self._txt("View Logs", PRIMARY2, 16, True))
-        lay.addLayout(ah)
-        self.act_card = QFrame(); self.act_card.setStyleSheet(CARD_STYLE)
-        self.act_lay = QVBoxLayout(self.act_card)
-        self.act_lay.setContentsMargins(0,0,0,0); self.act_lay.setSpacing(0)
-        lay.addWidget(self.act_card)
         lay.addStretch()
+
+    def _get_temp_data(self):
+        data = state["temp_history"]
+        if self._period == 0:
+            return data[-24:] if len(data) > 24 else list(data)
+        if self._period == 1:
+            return data[-168:] if len(data) > 168 else list(data)
+        return list(data)
+
+    def _get_ph_data(self):
+        data = state["ph_history"]
+        if self._period == 0:
+            return data[-24:] if len(data) > 24 else list(data)
+        if self._period == 1:
+            return data[-168:] if len(data) > 168 else list(data)
+        return list(data)
+
+    def _set_period(self, idx):
+        self._period = idx
+        for i, btn in enumerate(self._period_btns):
+            btn.setStyleSheet(self._active_pill if i == idx else self._inactive_pill)
+        self.temp_chart.update()
+        self.ph_chart.update()
 
     def _txt(self, text, color, size, bold=False):
         l = QLabel(text)
@@ -552,7 +663,7 @@ class StatsPage(QScrollArea):
     def refresh(self):
         t = state["temperature"]
         self.cur_temp.setText(f"{t}°C" if t else "--°C")
-        th = state["temp_history"]
+        th = self._get_temp_data()
         self.temp_avg.setText(f"Avg: {sum(th)/len(th):.1f}°C" if th else "Avg: --")
         self.temp_peak.setText(f"Peak: {max(th):.1f}°C" if th else "Peak: --")
         self.temp_chart.update()
@@ -561,25 +672,10 @@ class StatsPage(QScrollArea):
         self.cur_ph.setText(f"{ph} pH" if ph else "-- pH")
         self.ph_last.setText(f"Last: {ph} pH" if ph else "Last: -- pH")
         self.ph_chart.update()
-
-        while self.act_lay.count():
-            item = self.act_lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-        for i, (ts, lvl, msg) in enumerate(state["events"][:4]):
-            row_w = QWidget(); row_w.setStyleSheet("background:transparent;")
-            vl = QVBoxLayout(row_w); vl.setContentsMargins(22,16,22,0); vl.setSpacing(0)
-            row = QHBoxLayout(); row.setSpacing(16)
-            tl = QLabel(ts); tl.setStyleSheet(f"color:{TEXT_DARK};font-size:18px;font-weight:600;min-width:55px;")
-            col = QVBoxLayout()
-            ml = QLabel(msg); ml.setStyleSheet(f"color:{TEXT_DARK};font-size:18px;")
-            sl = QLabel(lvl.upper()); sl.setStyleSheet(f"color:{TEXT_MUTED};font-size:14px;font-weight:600;letter-spacing:1px;")
-            col.addWidget(ml); col.addWidget(sl)
-            row.addWidget(tl); row.addLayout(col); row.addStretch()
-            ck = QLabel("✓"); ck.setStyleSheet(f"color:{SUCCESS};font-size:22px;")
-            row.addWidget(ck)
-            vl.addLayout(row); vl.addSpacing(16)
-            if i < 3: vl.addWidget(hdivider())
-            self.act_lay.addWidget(row_w)
+        self.temp_target_lbl.setText(
+            f"Target: {allowed_ranges['temp_safe_min']}°C – {allowed_ranges['temp_safe_max']}°C")
+        self.ph_target_lbl.setText(
+            f"Target: {allowed_ranges['ph_safe_min']} – {allowed_ranges['ph_safe_max']}")
 
 # ── Schedule ──────────────────────────────────────────────────────────────────
 class SchedulePage(QScrollArea):
@@ -612,11 +708,6 @@ class SchedulePage(QScrollArea):
             tfl.addWidget(self._txt(val, PRIMARY, 24, True))
             tr.addWidget(tf)
         ll.addLayout(tr)
-        eb = QPushButton("EDIT CYCLE DURATION")
-        eb.setStyleSheet(f"QPushButton{{background:transparent;color:{TEXT_DARK};border:1px solid #CBD5E0;"
-                         f"border-radius:10px;font-size:16px;font-weight:600;letter-spacing:1px;padding:14px;}}"
-                         f"QPushButton:hover{{background:#F0F4F8;}}")
-        ll.addWidget(eb)
         lay.addWidget(lc)
 
         # Routines header
@@ -625,14 +716,14 @@ class SchedulePage(QScrollArea):
         rh.addStretch(); rh.addWidget(badge("3 ACTIVE", PRIMARY2))
         lay.addLayout(rh)
 
-        # Routines card
+        # Feeding routines card
         rc = QFrame(); rc.setStyleSheet(CARD_STYLE)
         rcl = QVBoxLayout(rc); rcl.setContentsMargins(0,0,0,0); rcl.setSpacing(0)
         routines = [
             ("🍽","Morning Feed","08:00 AM",True,SUCCESS),
-            ("💧","CO2 Injection","09:00 AM – 05:00 PM",True,PRIMARY2),
-            ("🍽","Evening Feed","06:00 PM",False,TEXT_MUTED),
-            ("🧪","Liquid Fertilizers","Mon, Wed, Fri",True,ACCENT),
+            ("🍽","Afternoon Feed","12:00 PM",True,PRIMARY2),
+            ("🍽","Evening Feed","06:00 PM",True,ACCENT),
+            ("🍽","Night Check","10:00 PM",False,TEXT_MUTED),
         ]
         for i,(ico,name,sched,on,col) in enumerate(routines):
             rw = QWidget(); rw.setStyleSheet("background:transparent;")
@@ -646,8 +737,7 @@ class SchedulePage(QScrollArea):
             row.addWidget(ic)
             info = QVBoxLayout(); info.setSpacing(4)
             nl = QLabel(name); nl.setStyleSheet(f"color:{TEXT_DARK if on else TEXT_MUTED};font-size:18px;font-weight:600;")
-            prefix = "⏰" if ":" in sched else "📅"
-            sl = QLabel(f"{prefix} {sched}"); sl.setStyleSheet(f"color:{TEXT_MUTED};font-size:16px;")
+            sl = QLabel(f"⏰ {sched}"); sl.setStyleSheet(f"color:{TEXT_MUTED};font-size:16px;")
             info.addWidget(nl); info.addWidget(sl)
             row.addLayout(info); row.addStretch()
             row.addWidget(ToggleSwitch(on))
@@ -655,19 +745,6 @@ class SchedulePage(QScrollArea):
             if i < len(routines)-1: rvl.addWidget(hdivider())
             rcl.addWidget(rw)
         lay.addWidget(rc)
-
-        ab = QPushButton("  +  Add New Task"); ab.setFixedHeight(70)
-        ab.setStyleSheet(f"QPushButton{{background:{PRIMARY};color:white;font-size:20px;"
-                         f"font-weight:700;border-radius:16px;border:none;}}"
-                         f"QPushButton:hover{{background:{PRIMARY2};}}")
-        lay.addWidget(ab)
-
-        lf = QFrame(); lf.setStyleSheet(CARD_STYLE)
-        lfl = QVBoxLayout(lf); lfl.setContentsMargins(22,18,22,18); lfl.setSpacing(10)
-        lfl.addWidget(self._txt("LAST ACTIONS", TEXT_MUTED, 14, True))
-        self.last_lay = QVBoxLayout(); self.last_lay.setSpacing(8)
-        lfl.addLayout(self.last_lay)
-        lay.addWidget(lf)
         lay.addStretch()
 
     def _txt(self, text, color, size, bold=False):
@@ -676,23 +753,17 @@ class SchedulePage(QScrollArea):
         return l
 
     def refresh(self):
-        while self.last_lay.count():
-            item = self.last_lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-        for ts, lvl, msg in state["events"][:3]:
-            rw = QWidget(); rw.setStyleSheet("background:transparent;")
-            rl = QHBoxLayout(rw); rl.setContentsMargins(0,0,0,0); rl.setSpacing(10)
-            tl = QLabel(ts); tl.setStyleSheet(f"color:{PRIMARY2};font-size:16px;font-weight:600;min-width:55px;")
-            status = "OK" if lvl in ("SUCCESS","INFO") else lvl
-            ml = QLabel(f"{msg[:35]}... [{status}]" if len(msg)>35 else f"{msg} [{status}]")
-            ml.setStyleSheet(f"color:{TEXT_MID};font-size:16px;")
-            rl.addWidget(tl); rl.addWidget(ml); rl.addStretch()
-            self.last_lay.addWidget(rw)
+        pass
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 class SettingsPage(QScrollArea):
-    def __init__(self, parent=None):
+    _PCT_OPTIONS = (5, 10, 15, 20)
+
+    def __init__(self, mqtt_client, parent=None):
         super().__init__(parent)
+        self.mqtt_client = mqtt_client
+        self._temp_pct = temp_warn_pct
+        self._ph_pct   = ph_warn_pct
         self.setWidgetResizable(True); self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setStyleSheet(f"background:{BG};")
@@ -717,80 +788,164 @@ class SettingsPage(QScrollArea):
         nc = QFrame(); nc.setStyleSheet(CARD_STYLE)
         nl = QVBoxLayout(nc); nl.setContentsMargins(0,0,0,0); nl.setSpacing(0)
         nl.addWidget(self._notif_row("🔔","Push Notifications","Real-time alerts on your device",True))
-        nl.addWidget(hdivider())
-        nl.addWidget(self._notif_row("✉️","Email Alerts","Daily summaries and critical logs",False))
         lay.addWidget(nc)
 
         # Safe Ranges
         lay.addWidget(section_lbl("SAFE RANGES & ALERTS"))
         rc = QFrame(); rc.setStyleSheet(CARD_STYLE)
-        rl = QVBoxLayout(rc); rl.setContentsMargins(22,22,22,22); rl.setSpacing(14)
-        tr = QHBoxLayout()
-        tr.addWidget(QLabel("🌡")); tr.addWidget(self._txt("Temperature Range", TEXT_DARK, 18))
-        tr.addStretch()
-        tr.addWidget(self._txt(f"{config.TEMP_MIN_NORMAL}°C – {config.TEMP_MAX_NORMAL}°C", PRIMARY2, 18, True))
-        rl.addLayout(tr)
-        ts = QSlider(Qt.Horizontal); ts.setRange(150,350); ts.setValue(250)
-        ts.setStyleSheet(self._slider_style()); rl.addWidget(ts)
-        labels = QHBoxLayout()
-        for t in [f"MIN: {config.TEMP_MIN_ALARM}°C","IDEAL ZONE",f"MAX: {config.TEMP_MAX_ALARM}°C"]:
-            l = QLabel(t); l.setStyleSheet(f"color:{TEXT_MUTED};font-size:14px;")
-            if t == "IDEAL ZONE": l.setAlignment(Qt.AlignCenter); labels.addWidget(l,1)
-            else: labels.addWidget(l)
-        rl.addLayout(labels)
+        rl = QVBoxLayout(rc); rl.setContentsMargins(22,22,22,22); rl.setSpacing(16)
+
+        # ── Temperature ──
+        th = QHBoxLayout()
+        th.addWidget(QLabel("🌡"))
+        th.addWidget(self._txt("Temperature Range", TEXT_DARK, 18))
+        th.addStretch()
+        rl.addLayout(th)
+
+        sr = QHBoxLayout(); sr.setSpacing(10)
+        slbl = self._txt("✓ Safe", SUCCESS, 13, True); slbl.setFixedWidth(90)
+        sr.addWidget(slbl)
+        self.temp_safe_slider = RangeSlider(
+            allowed_ranges["temp_safe_min"], allowed_ranges["temp_safe_max"],
+            10.0, 40.0)
+        self.temp_safe_slider.range_changed.connect(self._on_temp_safe)
+        sr.addWidget(self.temp_safe_slider, 1)
+        self.temp_safe_lbl = self._txt(
+            f"{allowed_ranges['temp_safe_min']}°C – {allowed_ranges['temp_safe_max']}°C",
+            SUCCESS, 13, True)
+        self.temp_safe_lbl.setFixedWidth(110)
+        sr.addWidget(self.temp_safe_lbl)
+        rl.addLayout(sr)
+
+        rl.addLayout(self._pct_row("temp"))
+        self.temp_warn_info = self._txt("", WARNING, 13)
+        rl.addWidget(self.temp_warn_info)
+        self._update_temp_warn_info()
+
         rl.addWidget(hdivider())
-        pr = QHBoxLayout()
-        pr.addWidget(QLabel("💧")); pr.addWidget(self._txt("pH Level Limit", TEXT_DARK, 18))
-        pr.addStretch()
-        pr.addWidget(self._txt(f"{config.PH_MIN_NORMAL} – {config.PH_MAX_NORMAL}", PRIMARY2, 18, True))
-        rl.addLayout(pr)
-        ps = QSlider(Qt.Horizontal); ps.setRange(50,90); ps.setValue(70)
-        ps.setStyleSheet(self._slider_style()); rl.addWidget(ps)
+
+        # ── pH ──
+        ph_h = QHBoxLayout()
+        ph_h.addWidget(QLabel("💧"))
+        ph_h.addWidget(self._txt("pH Level Range", TEXT_DARK, 18))
+        ph_h.addStretch()
+        rl.addLayout(ph_h)
+
+        psr = QHBoxLayout(); psr.setSpacing(10)
+        pslbl = self._txt("✓ Safe", SUCCESS, 13, True); pslbl.setFixedWidth(90)
+        psr.addWidget(pslbl)
+        self.ph_safe_slider = RangeSlider(
+            allowed_ranges["ph_safe_min"], allowed_ranges["ph_safe_max"],
+            4.0, 10.0)
+        self.ph_safe_slider.range_changed.connect(self._on_ph_safe)
+        psr.addWidget(self.ph_safe_slider, 1)
+        self.ph_safe_lbl = self._txt(
+            f"{allowed_ranges['ph_safe_min']} – {allowed_ranges['ph_safe_max']}",
+            SUCCESS, 13, True)
+        self.ph_safe_lbl.setFixedWidth(110)
+        psr.addWidget(self.ph_safe_lbl)
+        rl.addLayout(psr)
+
+        rl.addLayout(self._pct_row("ph"))
+        self.ph_warn_info = self._txt("", WARNING, 13)
+        rl.addWidget(self.ph_warn_info)
+        self._update_ph_warn_info()
+
         lay.addWidget(rc)
-
-        # Sensor Calibration
-        lay.addWidget(section_lbl("SENSOR CALIBRATION"))
-        cc = QFrame(); cc.setStyleSheet(CARD_STYLE)
-        cl = QVBoxLayout(cc); cl.setContentsMargins(0,0,0,0); cl.setSpacing(0)
-        cl.addWidget(self._calib_row("🔬","Temperature Probe","Last calibrated: 12 days ago"))
-        cl.addWidget(hdivider())
-        cl.addWidget(self._calib_row("💧","Water Level Sensor","Automatic calibration active"))
-        lay.addWidget(cc)
-
-        # Device Info
-        lay.addWidget(section_lbl("DEVICE INFORMATION"))
-        ic = QFrame(); ic.setStyleSheet(CARD_STYLE)
-        il = QVBoxLayout(ic); il.setContentsMargins(22,10,22,10); il.setSpacing(0)
-        for ico, lbl, val in [("⚙️","Firmware Version","v2.4.12-stable"),
-                               ("📶","Wi-Fi Signal Strength","-54 dBm"),
-                               ("🌐","Network SSID","AquaNet_2.4G")]:
-            row = QHBoxLayout()
-            row.addWidget(self._txt(f"{ico}  {lbl}", TEXT_MID, 17))
-            row.addStretch()
-            vl = QLabel(val)
-            vl.setStyleSheet(f"color:{PRIMARY};font-size:17px;font-weight:600;font-family:monospace;")
-            row.addWidget(vl)
-            il.addSpacing(16); il.addLayout(row)
-        il.addSpacing(16)
-        lay.addWidget(ic)
-
-        rb = QPushButton("  ↺  Reset Device to Factory Settings"); rb.setFixedHeight(70)
-        rb.setStyleSheet(f"QPushButton{{background:transparent;color:{DANGER};border:1.5px solid {DANGER};"
-                         f"border-radius:16px;font-size:18px;font-weight:600;}}"
-                         f"QPushButton:hover{{background:#FFF0F0;}}")
-        lay.addWidget(rb)
         lay.addStretch()
+
+    def _pct_row(self, param):
+        row = QHBoxLayout(); row.setSpacing(8)
+        row.addWidget(self._txt("⚠ Warning buffer:", WARNING, 13, True))
+        current = self._temp_pct if param == "temp" else self._ph_pct
+        btns = {}
+        for pct in self._PCT_OPTIONS:
+            btn = QPushButton(f"{pct}%")
+            btn.setCheckable(True)
+            btn.setChecked(pct == current)
+            btn.setFixedSize(60, 34)
+            self._style_pct_btn(btn, pct == current)
+            btn.clicked.connect(lambda _, p=pct, par=param: self._on_pct_clicked(par, p))
+            btns[pct] = btn
+            row.addWidget(btn)
+        setattr(self, f"_{param}_pct_btns", btns)
+        row.addStretch()
+        return row
+
+    def _style_pct_btn(self, btn, active):
+        if active:
+            btn.setStyleSheet(
+                f"QPushButton{{background:{WARNING};color:white;font-size:14px;font-weight:700;"
+                f"border-radius:10px;border:none;}}"
+                f"QPushButton:hover{{background:{WARNING};}}")
+        else:
+            btn.setStyleSheet(
+                "QPushButton{background:#F0F4F8;color:#64748B;font-size:14px;font-weight:600;"
+                "border-radius:10px;border:none;}"
+                "QPushButton:hover{background:#E2E8F0;}")
+
+    def _on_pct_clicked(self, param, pct):
+        if param == "temp":
+            self._temp_pct = pct
+            for p, b in self._temp_pct_btns.items():
+                self._style_pct_btn(b, p == pct)
+            self._recompute_warn("temp")
+            self._update_temp_warn_info()
+        else:
+            self._ph_pct = pct
+            for p, b in self._ph_pct_btns.items():
+                self._style_pct_btn(b, p == pct)
+            self._recompute_warn("ph")
+            self._update_ph_warn_info()
+        self._publish_thresholds()
+
+    def _recompute_warn(self, param):
+        global temp_warn_pct, ph_warn_pct
+        if param == "temp":
+            temp_warn_pct = self._temp_pct
+            span = allowed_ranges["temp_safe_max"] - allowed_ranges["temp_safe_min"]
+            buf  = span * self._temp_pct / 100
+            allowed_ranges["temp_warn_min"] = round(allowed_ranges["temp_safe_min"] + buf, 1)
+            allowed_ranges["temp_warn_max"] = round(allowed_ranges["temp_safe_max"] - buf, 1)
+        else:
+            ph_warn_pct = self._ph_pct
+            span = allowed_ranges["ph_safe_max"] - allowed_ranges["ph_safe_min"]
+            buf  = span * self._ph_pct / 100
+            allowed_ranges["ph_warn_min"] = round(allowed_ranges["ph_safe_min"] + buf, 1)
+            allowed_ranges["ph_warn_max"] = round(allowed_ranges["ph_safe_max"] - buf, 1)
+
+    def _update_temp_warn_info(self):
+        s_min = allowed_ranges["temp_safe_min"]; s_max = allowed_ranges["temp_safe_max"]
+        w_min = allowed_ranges["temp_warn_min"]; w_max = allowed_ranges["temp_warn_max"]
+        self.temp_warn_info.setText(
+            f"Warn when: {s_min}–{w_min}°C  or  {w_max}–{s_max}°C")
+
+    def _update_ph_warn_info(self):
+        s_min = allowed_ranges["ph_safe_min"]; s_max = allowed_ranges["ph_safe_max"]
+        w_min = allowed_ranges["ph_warn_min"]; w_max = allowed_ranges["ph_warn_max"]
+        self.ph_warn_info.setText(
+            f"Warn when: {s_min}–{w_min}  or  {w_max}–{s_max}")
+
+    def _on_temp_safe(self, mn, mx):
+        allowed_ranges["temp_safe_min"] = mn
+        allowed_ranges["temp_safe_max"] = mx
+        self.temp_safe_lbl.setText(f"{mn}°C – {mx}°C")
+        self._recompute_warn("temp")
+        self._update_temp_warn_info()
+        self._publish_thresholds()
+
+    def _on_ph_safe(self, mn, mx):
+        allowed_ranges["ph_safe_min"] = mn
+        allowed_ranges["ph_safe_max"] = mx
+        self.ph_safe_lbl.setText(f"{mn} – {mx}")
+        self._recompute_warn("ph")
+        self._update_ph_warn_info()
+        self._publish_thresholds()
 
     def _txt(self, text, color, size, bold=False):
         l = QLabel(text)
         l.setStyleSheet(f"color:{color};font-size:{size}px;font-weight:{'700' if bold else '400'};")
         return l
-
-    def _slider_style(self):
-        return (f"QSlider::groove:horizontal{{height:6px;background:#E8EDF2;border-radius:3px;}}"
-                f"QSlider::sub-page:horizontal{{background:{ACCENT};border-radius:3px;}}"
-                f"QSlider::handle:horizontal{{background:{PRIMARY};border-radius:11px;"
-                f"width:22px;height:22px;margin:-8px 0;}}")
 
     def _notif_row(self, ico, title, sub, checked):
         w = QWidget(); w.setStyleSheet("background:transparent;")
@@ -805,19 +960,11 @@ class SettingsPage(QScrollArea):
         row.addWidget(ToggleSwitch(checked))
         return w
 
-    def _calib_row(self, ico, title, sub):
-        w = QWidget(); w.setStyleSheet("background:transparent;")
-        row = QHBoxLayout(w); row.setContentsMargins(22,18,22,18); row.setSpacing(16)
-        il = QLabel(ico); il.setFixedSize(50,50); il.setAlignment(Qt.AlignCenter)
-        il.setStyleSheet("background:#F0F4F8;border-radius:25px;font-size:22px;")
-        row.addWidget(il)
-        info = QVBoxLayout(); info.setSpacing(4)
-        info.addWidget(self._txt(title, TEXT_DARK, 18, True))
-        info.addWidget(self._txt(sub, TEXT_MUTED, 14))
-        row.addLayout(info); row.addStretch()
-        arr = QLabel(">"); arr.setStyleSheet(f"color:{TEXT_MUTED};font-size:24px;")
-        row.addWidget(arr)
-        return w
+    def _publish_thresholds(self):
+        try:
+            self.mqtt_client.publish(TOPIC_THRESHOLDS, json.dumps(allowed_ranges))
+        except Exception:
+            add_event("WARNING", "Failed to publish threshold update")
 
     def refresh(self):
         pass
@@ -875,7 +1022,7 @@ class AquariumApp(QMainWindow):
         self.dash = DashboardPage(self.mqtt_client)
         self.stats = StatsPage()
         self.sched = SchedulePage()
-        self.sett = SettingsPage()
+        self.sett = SettingsPage(self.mqtt_client)
         for p in [self.dash, self.stats, self.sched, self.sett]:
             self.stack.addWidget(p)
         rl.addWidget(self.stack, 1)

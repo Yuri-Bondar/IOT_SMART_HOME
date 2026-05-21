@@ -9,9 +9,26 @@ import sqlite3
 from datetime import datetime
 import config
 
+TOPIC_THRESHOLDS = config.TOPIC_PREFIX + "/config/thresholds"
+
 # keep last known values for alert checking
 last_temp = None
 last_ph = None
+
+# runtime thresholds — updated live via MQTT from the GUI settings
+_DEF_PCT = 10
+_ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
+_ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
+runtime_thresholds = {
+    "temp_safe_min": config.TEMP_MIN_NORMAL,
+    "temp_safe_max": config.TEMP_MAX_NORMAL,
+    "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_PCT / 100, 1),
+    "temp_warn_max": round(config.TEMP_MAX_NORMAL - _ts * _DEF_PCT / 100, 1),
+    "ph_safe_min":   config.PH_MIN_NORMAL,
+    "ph_safe_max":   config.PH_MAX_NORMAL,
+    "ph_warn_min":   round(config.PH_MIN_NORMAL + _ps * _DEF_PCT / 100, 1),
+    "ph_warn_max":   round(config.PH_MAX_NORMAL - _ps * _DEF_PCT / 100, 1),
+}
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "db", "aquarium.db")
 
@@ -103,56 +120,47 @@ def save_alert(level, message, value, threshold, timestamp):
     conn.close()
 
 def check_temperature_alerts(client, temp, timestamp):
-    # check if temperature is in warning or alarm range
-    if temp < config.TEMP_MIN_ALARM or temp > config.TEMP_MAX_ALARM:
+    t = runtime_thresholds
+    if temp < t["temp_safe_min"] or temp > t["temp_safe_max"]:
         level = "ALARM"
-        if temp < config.TEMP_MIN_ALARM:
+        if temp < t["temp_safe_min"]:
             msg = "Temperature critically low: {}°C".format(temp)
-            threshold = config.TEMP_MIN_ALARM
+            threshold = t["temp_safe_min"]
         else:
             msg = "Temperature critically high: {}°C".format(temp)
-            threshold = config.TEMP_MAX_ALARM
+            threshold = t["temp_safe_max"]
         publish_alert(client, level, msg, temp, threshold, timestamp)
 
-    elif temp < config.TEMP_MIN_WARNING or temp > config.TEMP_MAX_WARNING:
-        level = "ALARM"
-        if temp < config.TEMP_MIN_WARNING:
-            msg = "Temperature dangerously low: {}°C".format(temp)
-            threshold = config.TEMP_MIN_WARNING
-        else:
-            msg = "Temperature dangerously high: {}°C".format(temp)
-            threshold = config.TEMP_MAX_WARNING
-        publish_alert(client, level, msg, temp, threshold, timestamp)
-
-    elif temp < config.TEMP_MIN_NORMAL or temp > config.TEMP_MAX_NORMAL:
+    elif temp <= t["temp_warn_min"] or temp >= t["temp_warn_max"]:
         level = "WARNING"
-        if temp < config.TEMP_MIN_NORMAL:
-            msg = "Temperature too low: {}°C".format(temp)
-            threshold = config.TEMP_MIN_NORMAL
+        if temp <= t["temp_warn_min"]:
+            msg = "Temperature approaching low limit: {}°C".format(temp)
+            threshold = t["temp_warn_min"]
         else:
-            msg = "Temperature too high: {}°C".format(temp)
-            threshold = config.TEMP_MAX_NORMAL
+            msg = "Temperature approaching high limit: {}°C".format(temp)
+            threshold = t["temp_warn_max"]
         publish_alert(client, level, msg, temp, threshold, timestamp)
 
 def check_ph_alerts(client, ph, timestamp):
-    if ph < config.PH_MIN_WARNING or ph > config.PH_MAX_WARNING:
+    t = runtime_thresholds
+    if ph < t["ph_safe_min"] or ph > t["ph_safe_max"]:
         level = "ALARM"
-        if ph < config.PH_MIN_WARNING:
+        if ph < t["ph_safe_min"]:
             msg = "pH critically low: {}".format(ph)
-            threshold = config.PH_MIN_WARNING
+            threshold = t["ph_safe_min"]
         else:
             msg = "pH critically high: {}".format(ph)
-            threshold = config.PH_MAX_WARNING
+            threshold = t["ph_safe_max"]
         publish_alert(client, level, msg, ph, threshold, timestamp)
 
-    elif ph < config.PH_MIN_NORMAL or ph > config.PH_MAX_NORMAL:
+    elif ph <= t["ph_warn_min"] or ph >= t["ph_warn_max"]:
         level = "WARNING"
-        if ph < config.PH_MIN_NORMAL:
-            msg = "pH too low: {}".format(ph)
-            threshold = config.PH_MIN_NORMAL
+        if ph <= t["ph_warn_min"]:
+            msg = "pH approaching low limit: {}".format(ph)
+            threshold = t["ph_warn_min"]
         else:
-            msg = "pH too high: {}".format(ph)
-            threshold = config.PH_MAX_NORMAL
+            msg = "pH approaching high limit: {}".format(ph)
+            threshold = t["ph_warn_max"]
         publish_alert(client, level, msg, ph, threshold, timestamp)
 
 def publish_alert(client, level, message, value, threshold, timestamp):
@@ -191,7 +199,7 @@ def on_disconnect(client, userdata, rc):
             time.sleep(5)
 
 def on_message(client, userdata, msg):
-    global last_temp, last_ph
+    global last_temp, last_ph, runtime_thresholds
 
     topic = msg.topic
     now = datetime.now().isoformat()
@@ -232,6 +240,12 @@ def on_message(client, userdata, msg):
         source = data.get("source", "unknown")
         ts = data.get("timestamp", now)
         save_light_event(state, source, ts)
+
+    elif topic == TOPIC_THRESHOLDS:
+        valid_keys = set(runtime_thresholds.keys())
+        updated = {k: float(v) for k, v in data.items() if k in valid_keys}
+        runtime_thresholds.update(updated)
+        print(f"[{now}] Thresholds updated: {updated}")
 
     elif topic == config.TOPIC_ALERTS:
         # alerts are already saved when they are generated
