@@ -6,6 +6,7 @@ import paho.mqtt.client as mqtt
 import json
 import time
 import sqlite3
+import threading
 from datetime import datetime
 import config
 
@@ -31,6 +32,37 @@ runtime_thresholds = {
 }
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "db", "aquarium.db")
+
+last_fed_times = set()
+_last_minute = None
+
+def check_feeding_schedule(client):
+    global last_fed_times, _last_minute
+    now = datetime.now()
+    current_minute = now.strftime("%H:%M")
+    if current_minute != _last_minute:
+        last_fed_times = set()
+        _last_minute = current_minute
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT name, time FROM feeding_schedules WHERE enabled=1")
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        print("Feeding schedule check error: {}".format(e))
+        return
+    for name, feed_time in rows:
+        if feed_time == current_minute and feed_time not in last_fed_times:
+            last_fed_times.add(feed_time)
+            payload = json.dumps({
+                "action": "feed",
+                "amount": "normal",
+                "timestamp": now.isoformat(),
+                "source": name,
+            })
+            client.publish(config.TOPIC_FEEDING_CMD, payload)
+            print("[{}] Scheduled feeding triggered: {}".format(current_minute, name))
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -303,6 +335,13 @@ def main():
     except Exception as e:
         print("Could not connect to broker: {}".format(e))
         return
+
+    def _feeding_scheduler():
+        while True:
+            check_feeding_schedule(client)
+            time.sleep(30)
+
+    threading.Thread(target=_feeding_scheduler, daemon=True).start()
 
     print("Data Manager started. Press Ctrl+C to stop.")
     try:
