@@ -140,6 +140,33 @@ def init_db():
             "INSERT INTO light_schedule (id, on_time, off_time) VALUES (1, '08:00', '22:00')"
         )
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS allowed_ranges (
+            key TEXT PRIMARY KEY,
+            value REAL NOT NULL
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM allowed_ranges")
+    if cursor.fetchone()[0] == 0:
+        _ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
+        _ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
+        _pct = 10
+        cursor.executemany(
+            "INSERT INTO allowed_ranges (key, value) VALUES (?, ?)",
+            [
+                ("temp_safe_min", config.TEMP_MIN_NORMAL),
+                ("temp_safe_max", config.TEMP_MAX_NORMAL),
+                ("temp_warn_min", round(config.TEMP_MIN_NORMAL + _ts * _pct / 100, 1)),
+                ("temp_warn_max", round(config.TEMP_MAX_NORMAL - _ts * _pct / 100, 1)),
+                ("ph_safe_min",   config.PH_MIN_NORMAL),
+                ("ph_safe_max",   config.PH_MAX_NORMAL),
+                ("ph_warn_min",   round(config.PH_MIN_NORMAL + _ps * _pct / 100, 1)),
+                ("ph_warn_max",   round(config.PH_MAX_NORMAL - _ps * _pct / 100, 1)),
+                ("temp_warn_pct", 10.0),
+                ("ph_warn_pct",   10.0),
+            ]
+        )
+
     conn.commit()
     conn.close()
     print("Database initialized at: " + DB_PATH)

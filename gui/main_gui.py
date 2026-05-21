@@ -52,18 +52,57 @@ state = {
 _DEF_WARN_PCT = 10
 temp_warn_pct = _DEF_WARN_PCT
 ph_warn_pct   = _DEF_WARN_PCT
-_ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
-_ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
-allowed_ranges = {
-    "temp_safe_min": config.TEMP_MIN_NORMAL,
-    "temp_safe_max": config.TEMP_MAX_NORMAL,
-    "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_WARN_PCT / 100, 1),
-    "temp_warn_max": round(config.TEMP_MAX_NORMAL - _ts * _DEF_WARN_PCT / 100, 1),
-    "ph_safe_min":   config.PH_MIN_NORMAL,
-    "ph_safe_max":   config.PH_MAX_NORMAL,
-    "ph_warn_min":   round(config.PH_MIN_NORMAL + _ps * _DEF_WARN_PCT / 100, 1),
-    "ph_warn_max":   round(config.PH_MAX_NORMAL - _ps * _DEF_WARN_PCT / 100, 1),
-}
+
+_AR_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'db', 'aquarium.db')
+_AR_KEYS = ["temp_safe_min","temp_safe_max","temp_warn_min","temp_warn_max",
+            "ph_safe_min","ph_safe_max","ph_warn_min","ph_warn_max",
+            "temp_warn_pct","ph_warn_pct"]
+
+def _ar_defaults():
+    _ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
+    _ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
+    return {
+        "temp_safe_min": config.TEMP_MIN_NORMAL,
+        "temp_safe_max": config.TEMP_MAX_NORMAL,
+        "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_WARN_PCT / 100, 1),
+        "temp_warn_max": round(config.TEMP_MAX_NORMAL - _ts * _DEF_WARN_PCT / 100, 1),
+        "ph_safe_min":   config.PH_MIN_NORMAL,
+        "ph_safe_max":   config.PH_MAX_NORMAL,
+        "ph_warn_min":   round(config.PH_MIN_NORMAL + _ps * _DEF_WARN_PCT / 100, 1),
+        "ph_warn_max":   round(config.PH_MAX_NORMAL - _ps * _DEF_WARN_PCT / 100, 1),
+    }
+
+def load_allowed_ranges():
+    global temp_warn_pct, ph_warn_pct
+    try:
+        conn = sqlite3.connect(_AR_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT key, value FROM allowed_ranges")
+        rows = {k: v for k, v in cur.fetchall()}
+        conn.close()
+        if all(k in rows for k in _AR_KEYS):
+            temp_warn_pct = int(rows.get("temp_warn_pct", _DEF_WARN_PCT))
+            ph_warn_pct   = int(rows.get("ph_warn_pct",   _DEF_WARN_PCT))
+            return rows
+    except Exception:
+        pass
+    return _ar_defaults()
+
+def save_allowed_ranges():
+    allowed_ranges["temp_warn_pct"] = temp_warn_pct
+    allowed_ranges["ph_warn_pct"]   = ph_warn_pct
+    try:
+        conn = sqlite3.connect(_AR_DB_PATH)
+        cur = conn.cursor()
+        cur.executemany(
+            "INSERT OR REPLACE INTO allowed_ranges (key, value) VALUES (?, ?)",
+            [(k, allowed_ranges[k]) for k in _AR_KEYS]
+        )
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+allowed_ranges = load_allowed_ranges()
 
 def add_event(level, message):
     now = datetime.now().strftime("%H:%M")
@@ -1239,6 +1278,7 @@ class SettingsPage(QScrollArea):
             self.mqtt_client.publish(TOPIC_THRESHOLDS, json.dumps(allowed_ranges))
         except Exception:
             add_event("WARNING", "Failed to publish threshold update")
+        save_allowed_ranges()
 
     def refresh(self):
         pass
@@ -1247,22 +1287,46 @@ class SettingsPage(QScrollArea):
 class NavButton(QPushButton):
     def __init__(self, icon, label, parent=None):
         super().__init__(parent)
-        self._icon = icon; self._label = label; self._active = False
+        self._active = False
         self.setFixedHeight(80); self.setCursor(Qt.PointingHandCursor)
-        self.setFlat(True); self._style()
+        self.setFlat(True)
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(4, 8, 4, 8); vl.setSpacing(2)
+        vl.setAlignment(Qt.AlignCenter)
+
+        self._ico_lbl = QLabel(icon)
+        self._ico_lbl.setAlignment(Qt.AlignCenter)
+        self._ico_lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        self._txt_lbl = QLabel(label)
+        self._txt_lbl.setAlignment(Qt.AlignCenter)
+        self._txt_lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        vl.addWidget(self._ico_lbl)
+        vl.addWidget(self._txt_lbl)
+        self._style()
 
     def set_active(self, on):
         self._active = on; self._style()
 
     def _style(self):
-        self.setText(f"{self._icon}\n{self._label}")
         if self._active:
-            self.setStyleSheet(f"QPushButton{{background:{ACCENT};color:{PRIMARY};font-size:15px;"
-                               f"font-weight:700;border-radius:18px;padding:8px 6px;border:none;}}")
+            self.setStyleSheet(f"QPushButton{{background:{ACCENT};border-radius:18px;border:none;}}")
+            self._ico_lbl.setStyleSheet(
+                f"color:{PRIMARY};font-family:'Segoe MDL2 Assets';font-size:18px;"
+                f"background:transparent;border:none;text-decoration:none;padding:0;")
+            self._txt_lbl.setStyleSheet(
+                f"color:{PRIMARY};font-size:15px;font-weight:700;background:transparent;border:none;")
         else:
-            self.setStyleSheet(f"QPushButton{{background:transparent;color:{TEXT_MUTED};font-size:15px;"
-                               f"font-weight:500;border-radius:18px;padding:8px 6px;border:none;}}"
-                               f"QPushButton:hover{{color:{TEXT_MID};}}")
+            self.setStyleSheet(
+                f"QPushButton{{background:transparent;border-radius:18px;border:none;}}"
+                f"QPushButton:hover{{background:#F0F4F8;}}")
+            self._ico_lbl.setStyleSheet(
+                f"color:{TEXT_MUTED};font-family:'Segoe MDL2 Assets';font-size:18px;"
+                f"background:transparent;border:none;text-decoration:none;padding:0;")
+            self._txt_lbl.setStyleSheet(
+                f"color:{TEXT_MUTED};font-size:15px;font-weight:500;background:transparent;border:none;")
 
 # ── Main Window ───────────────────────────────────────────────────────────────
 class AquariumApp(QMainWindow):
@@ -1306,7 +1370,7 @@ class AquariumApp(QMainWindow):
         nb.setFixedHeight(90)
         nbl = QHBoxLayout(nb); nbl.setContentsMargins(12,6,12,6); nbl.setSpacing(6)
         self.nav = []
-        for i,(ico,lbl) in enumerate([("⊞","Dashboard"),("📊","Stats"),("📅","Schedule"),("⚙","Settings")]):
+        for i,(ico,lbl) in enumerate([("","Dashboard"),("","Stats"),("","Schedule"),("","Settings")]):
             btn = NavButton(ico, lbl)
             btn.clicked.connect(lambda _, idx=i: self._switch(idx))
             nbl.addWidget(btn); self.nav.append(btn)
