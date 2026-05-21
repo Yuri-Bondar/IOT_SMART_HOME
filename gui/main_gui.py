@@ -33,7 +33,7 @@ WARNING    = "#FFB020"
 DANGER     = "#FF4757"
 
 # ── Shared state ─────────────────────────────────────────────────────────────
-MAX_HISTORY = 24
+MAX_HISTORY = 4800
 state = {
     "temperature": None,
     "ph": None,
@@ -195,13 +195,17 @@ class ToggleSwitch(QWidget):
 
 # ── Line Chart ────────────────────────────────────────────────────────────────
 class LineChart(QWidget):
-    def __init__(self, data_fn, color=ACCENT, lo=None, hi=None, parent=None):
+    def __init__(self, data_fn, color=ACCENT, lo=None, hi=None, time_axis=False,
+                 target_lo=None, target_hi=None, parent=None):
         super().__init__(parent)
         self.data_fn = data_fn
         self.color = color
         self.lo = lo
         self.hi = hi
-        self.setMinimumHeight(160)
+        self.time_axis = time_axis
+        self.target_lo = target_lo
+        self.target_hi = target_hi
+        self.setMinimumHeight(180 if time_axis else 160)
 
     def paintEvent(self, e):
         p = QPainter(self)
@@ -209,78 +213,79 @@ class LineChart(QWidget):
         data = self.data_fn()
         w, h = self.width(), self.height()
         pad = 12
-        if len(data) < 2:
+        axis_h = 22 if self.time_axis else 0
+        pad_bot = pad + axis_h
+        WINDOW = 10800  # fixed 3-hour x range in seconds
+        chart_w = w - 2 * pad
+        chart_h = h - pad - pad_bot
+        n = len(data)
+
+        # time axis labels — always span the full 4h window, even with no data
+        if self.time_axis:
+            now_ts = datetime.now().timestamp()
+            mark_ts = (int(now_ts) // 1800) * 1800
+            font = QFont(); font.setPixelSize(11)
+            p.setFont(font)
             p.setPen(QColor(TEXT_MUTED))
-            p.drawText(self.rect(), Qt.AlignCenter, "Waiting for data...")
+            while True:
+                secs_ago = now_ts - mark_ts
+                if secs_ago > WINDOW:
+                    break
+                lx = int(pad + (1.0 - secs_ago / WINDOW) * chart_w)
+                p.drawText(lx - 20, h - axis_h + 4, 40, 16, Qt.AlignCenter,
+                           datetime.fromtimestamp(mark_ts).strftime("%H:%M"))
+                mark_ts -= 1800
+
+        if n < 2:
+            p.setPen(QColor(TEXT_MUTED))
+            p.drawText(QRectF(pad, pad, chart_w, chart_h), Qt.AlignCenter, "Waiting for data...")
             return
+
         lo = self.lo if self.lo is not None else min(data) - 1
         hi = self.hi if self.hi is not None else max(data) + 1
         rng = hi - lo if hi != lo else 1
 
         def pt(i, v):
-            x = pad + (i / (len(data) - 1)) * (w - 2 * pad)
-            y = h - pad - ((v - lo) / rng) * (h - 2 * pad)
+            age_s = (n - 1 - i) * config.SENSOR_INTERVAL
+            x = pad + (1.0 - age_s / WINDOW) * chart_w
+            y = h - pad_bot - ((v - lo) / rng) * chart_h
             return QPointF(x, y)
 
+        p0 = pt(0, data[0])
         path = QPainterPath()
-        path.moveTo(pt(0, data[0]))
-        for i in range(1, len(data)):
+        path.moveTo(p0)
+        for i in range(1, n):
             path.lineTo(pt(i, data[i]))
-        path.lineTo(QPointF(w - pad, h - pad))
-        path.lineTo(QPointF(pad, h - pad))
+        last = pt(n - 1, data[-1])
+        path.lineTo(QPointF(last.x(), h - pad_bot))
+        path.lineTo(QPointF(p0.x(), h - pad_bot))
         path.closeSubpath()
-        grad = QLinearGradient(0, 0, 0, h)
+        grad = QLinearGradient(0, 0, 0, h - axis_h)
         c1 = QColor(self.color); c1.setAlpha(55)
         c2 = QColor(self.color); c2.setAlpha(5)
         grad.setColorAt(0, c1); grad.setColorAt(1, c2)
         p.fillPath(path, QBrush(grad))
+
+        # safe range band — drawn behind the data line
+        if self.target_lo is not None and self.target_hi is not None:
+            band_pen = QPen(QColor(220, 50, 50, 150), 1, Qt.DashLine)
+            lbl_font = QFont(); lbl_font.setPixelSize(10)
+            for val in (self.target_lo, self.target_hi):
+                vy = h - pad_bot - ((val - lo) / rng) * chart_h
+                p.setPen(band_pen)
+                p.drawLine(QPointF(pad, vy), QPointF(pad + chart_w, vy))
+                p.setFont(lbl_font)
+                p.setPen(QColor(TEXT_MUTED))
+                p.drawText(pad + 2, int(vy) - 12, 36, 12, Qt.AlignLeft, str(val))
+
         p.setPen(QPen(QColor(self.color), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        for i in range(len(data) - 1):
+        for i in range(n - 1):
             p.drawLine(pt(i, data[i]), pt(i + 1, data[i + 1]))
-        last = pt(len(data) - 1, data[-1])
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(self.color)))
         p.drawEllipse(last, 7, 7)
         p.setBrush(QBrush(QColor(WHITE)))
         p.drawEllipse(last, 4, 4)
-
-# ── Bar Chart ─────────────────────────────────────────────────────────────────
-class BarChart(QWidget):
-    def __init__(self, data_fn, color="#A8D5D8", highlight=PRIMARY, parent=None):
-        super().__init__(parent)
-        self.data_fn = data_fn
-        self.color = color
-        self.highlight = highlight
-        self.setMinimumHeight(130)
-
-    def paintEvent(self, e):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        raw = self.data_fn()
-        w, h = self.width(), self.height()
-        if not raw:
-            p.setPen(QColor(TEXT_MUTED))
-            p.drawText(self.rect(), Qt.AlignCenter, "Waiting for data...")
-            return
-        show = raw[-7:] if len(raw) >= 7 else raw
-        while len(show) < 7:
-            show = [None] + list(show)
-        n = len(show)
-        gap = 8
-        bar_w = (w - gap * (n + 1)) / n
-        vals = [v for v in show if v is not None]
-        hi = max(vals) + 1 if vals else 10
-        pad_top = 10
-        usable_h = h - pad_top
-        for i, v in enumerate(show):
-            x = gap + i * (bar_w + gap)
-            bar_h = max(10, (v / hi) * usable_h) if v is not None else 10
-            y = h - bar_h
-            col = self.highlight if i == len(show) - 1 else self.color
-            p.setBrush(QBrush(QColor(col)))
-            p.setPen(Qt.NoPen)
-            r = min(bar_w / 3, 5)
-            p.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), r, r)
 
 # ── Range Slider ─────────────────────────────────────────────────────────────
 class RangeSlider(QWidget):
@@ -546,7 +551,6 @@ class DashboardPage(QScrollArea):
 class StatsPage(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._period = 0
         self.setWidgetResizable(True); self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setStyleSheet(f"background:{BG};")
@@ -556,38 +560,19 @@ class StatsPage(QScrollArea):
         lay.addWidget(self._txt("Analytics", TEXT_DARK, 38, True))
         lay.addWidget(self._txt("Monitoring aquatic equilibrium over time.", TEXT_MUTED, 18))
 
-        # Period pills
-        pf = QFrame(); pf.setStyleSheet("background:#E8EDF2;border-radius:14px;")
-        pl = QHBoxLayout(pf); pl.setContentsMargins(6,6,6,6); pl.setSpacing(6)
-        self._period_btns = []
-        self._active_pill = (f"background:{PRIMARY};color:white;border-radius:10px;"
-                             f"font-weight:600;font-size:18px;padding:8px 22px;border:none;")
-        self._inactive_pill = (f"background:transparent;color:{TEXT_MID};border-radius:10px;"
-                               f"font-size:18px;padding:8px 22px;border:none;")
-        for i, t in enumerate(["Day", "Week", "Month"]):
-            b = QPushButton(t)
-            b.setStyleSheet(self._active_pill if i == 0 else self._inactive_pill)
-            b.clicked.connect(lambda _, idx=i: self._set_period(idx))
-            pl.addWidget(b)
-            self._period_btns.append(b)
-        ph_row = QHBoxLayout(); ph_row.addWidget(pf); ph_row.addStretch()
-        lay.addLayout(ph_row)
-
         # Temperature chart card
         tc = QFrame(); tc.setStyleSheet(CARD_STYLE)
         tl = QVBoxLayout(tc); tl.setContentsMargins(22,22,22,22); tl.setSpacing(12)
         th = QHBoxLayout()
         th.addWidget(self._txt("WATER TEMPERATURE", PRIMARY2, 15, True))
         th.addStretch()
-        trend = QLabel("↗ 0.2%")
-        trend.setStyleSheet(f"background:#E8F8F5;color:{SUCCESS};font-size:15px;"
-                            f"font-weight:600;border-radius:8px;padding:4px 12px;")
-        th.addWidget(trend)
         tl.addLayout(th)
         self.cur_temp = QLabel("--°C")
         self.cur_temp.setStyleSheet(f"color:{TEXT_DARK};font-size:48px;font-weight:700;")
         tl.addWidget(self.cur_temp)
-        self.temp_chart = LineChart(self._get_temp_data, ACCENT, 18, 35)
+        self.temp_chart = LineChart(self._get_temp_data, ACCENT, 18, 35, time_axis=True,
+                                    target_lo=allowed_ranges["temp_safe_min"],
+                                    target_hi=allowed_ranges["temp_safe_max"])
         tl.addWidget(self.temp_chart)
         tf = QHBoxLayout()
         self.temp_avg = QLabel("Avg: --")
@@ -608,15 +593,13 @@ class StatsPage(QScrollArea):
         ph2 = QHBoxLayout()
         ph2.addWidget(self._txt("ACIDITY LEVEL", PRIMARY2, 15, True))
         ph2.addStretch()
-        sb = QLabel("✓  STABLE")
-        sb.setStyleSheet(f"background:#E8F8F5;color:{SUCCESS};font-size:15px;"
-                         f"font-weight:600;border-radius:8px;padding:4px 12px;")
-        ph2.addWidget(sb)
         pl2.addLayout(ph2)
         self.cur_ph = QLabel("-- pH")
         self.cur_ph.setStyleSheet(f"color:{TEXT_DARK};font-size:48px;font-weight:700;")
         pl2.addWidget(self.cur_ph)
-        self.ph_chart = BarChart(self._get_ph_data, "#A8D5D8", PRIMARY)
+        self.ph_chart = LineChart(self._get_ph_data, "#A8D5D8", 4, 10, time_axis=True,
+                                  target_lo=allowed_ranges["ph_safe_min"],
+                                  target_hi=allowed_ranges["ph_safe_max"])
         pl2.addWidget(self.ph_chart)
         pf2 = QHBoxLayout()
         self.ph_target_lbl = self._txt(
@@ -634,26 +617,11 @@ class StatsPage(QScrollArea):
 
     def _get_temp_data(self):
         data = state["temp_history"]
-        if self._period == 0:
-            return data[-24:] if len(data) > 24 else list(data)
-        if self._period == 1:
-            return data[-168:] if len(data) > 168 else list(data)
-        return list(data)
+        return data[-4800:] if len(data) > 4800 else list(data)
 
     def _get_ph_data(self):
         data = state["ph_history"]
-        if self._period == 0:
-            return data[-24:] if len(data) > 24 else list(data)
-        if self._period == 1:
-            return data[-168:] if len(data) > 168 else list(data)
-        return list(data)
-
-    def _set_period(self, idx):
-        self._period = idx
-        for i, btn in enumerate(self._period_btns):
-            btn.setStyleSheet(self._active_pill if i == idx else self._inactive_pill)
-        self.temp_chart.update()
-        self.ph_chart.update()
+        return data[-4800:] if len(data) > 4800 else list(data)
 
     def _txt(self, text, color, size, bold=False):
         l = QLabel(text)
@@ -666,11 +634,15 @@ class StatsPage(QScrollArea):
         th = self._get_temp_data()
         self.temp_avg.setText(f"Avg: {sum(th)/len(th):.1f}°C" if th else "Avg: --")
         self.temp_peak.setText(f"Peak: {max(th):.1f}°C" if th else "Peak: --")
+        self.temp_chart.target_lo = allowed_ranges["temp_safe_min"]
+        self.temp_chart.target_hi = allowed_ranges["temp_safe_max"]
         self.temp_chart.update()
 
         ph = state["ph"]
         self.cur_ph.setText(f"{ph} pH" if ph else "-- pH")
         self.ph_last.setText(f"Last: {ph} pH" if ph else "Last: -- pH")
+        self.ph_chart.target_lo = allowed_ranges["ph_safe_min"]
+        self.ph_chart.target_hi = allowed_ranges["ph_safe_max"]
         self.ph_chart.update()
         self.temp_target_lbl.setText(
             f"Target: {allowed_ranges['temp_safe_min']}°C – {allowed_ranges['temp_safe_max']}°C")
