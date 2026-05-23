@@ -27,7 +27,8 @@ _DEF_WARN_PCT = 10
 temp_warn_pct = _DEF_WARN_PCT
 ph_warn_pct   = _DEF_WARN_PCT
 
-_AR_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'db', 'aquarium.db')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'db', 'aquarium.db')
+_AR_DB_PATH = DB_PATH
 _AR_KEYS = ["temp_safe_min", "temp_safe_max", "temp_warn_min", "temp_warn_max",
             "ph_safe_min", "ph_safe_max", "ph_warn_min", "ph_warn_max",
             "temp_warn_pct", "ph_warn_pct"]

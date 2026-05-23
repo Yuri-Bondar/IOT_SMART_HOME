@@ -10,9 +10,8 @@ from PyQt5.QtCore import Qt, QTime
 from gui.palette import (PRIMARY, PRIMARY2, ACCENT, BG, WHITE, TEXT_DARK, TEXT_MID,
                          TEXT_MUTED, SUCCESS, CARD_STYLE)
 from gui.widgets import ToggleSwitch, hdivider, badge, make_txt
+from gui.state import DB_PATH as _DB_PATH
 import config
-
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'db', 'aquarium.db')
 
 
 def _fmt_time(t24):
