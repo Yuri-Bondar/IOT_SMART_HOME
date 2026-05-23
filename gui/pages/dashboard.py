@@ -5,8 +5,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import json
 from datetime import datetime
 from PyQt5.QtWidgets import (QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QPushButton, QFrame)
-from PyQt5.QtCore import Qt
+                             QLabel, QPushButton, QFrame, QDialog)
+from PyQt5.QtCore import Qt, QTimer
 import config
 from gui.palette import (PRIMARY, PRIMARY2, ACCENT, BG, WHITE, TEXT_DARK,
                          TEXT_MID, TEXT_MUTED, SUCCESS, WARNING, DANGER, CARD_STYLE)
@@ -18,7 +18,7 @@ class DashboardPage(QScrollArea):
     def __init__(self, mqtt_client, parent=None):
         super().__init__(parent)
         self.mqtt_client = mqtt_client
-        self._last_event_count = 0
+        self._last_top_event = None
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -83,7 +83,14 @@ class DashboardPage(QScrollArea):
         lh = QHBoxLayout()
         lh.addWidget(make_txt("Status Log", TEXT_DARK, 20, bold=True))
         lh.addStretch()
-        lh.addWidget(make_txt("VIEW ALL", PRIMARY2, 15, bold=True))
+        view_all_btn = QPushButton("VIEW ALL")
+        view_all_btn.setCursor(Qt.PointingHandCursor)
+        view_all_btn.setFlat(True)
+        view_all_btn.setStyleSheet(
+            f"QPushButton{{color:{PRIMARY2};font-size:15px;font-weight:700;background:transparent;border:none;}}"
+            f"QPushButton:hover{{color:{PRIMARY};}}")
+        view_all_btn.clicked.connect(self._open_log_dialog)
+        lh.addWidget(view_all_btn)
         lay.addLayout(lh)
 
         self.log_card = QFrame(); self.log_card.setStyleSheet(CARD_STYLE)
@@ -121,6 +128,64 @@ class DashboardPage(QScrollArea):
         except Exception:
             add_event("WARNING", "Failed to send feed command")
 
+    def _open_log_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Event Log")
+        dlg.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        dlg.resize(560, 560)
+        dlg.setStyleSheet(f"QDialog{{background:{BG};}}")
+        outer = QVBoxLayout(dlg)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(12)
+
+        outer.addWidget(make_txt("Event Log", TEXT_DARK, 22, bold=True))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet(f"background:{WHITE};border-radius:16px;")
+        inner = QWidget(); inner.setStyleSheet(f"background:{WHITE};border-radius:16px;")
+        inner_lay = QVBoxLayout(inner)
+        inner_lay.setContentsMargins(0, 0, 0, 0)
+        inner_lay.setSpacing(0)
+        inner_lay.addStretch()
+        scroll.setWidget(inner)
+        outer.addWidget(scroll, 1)
+
+        last_top = [None]
+
+        def _refresh_dialog():
+            top = state["events"][0] if state["events"] else None
+            if top == last_top[0]:
+                return
+            last_top[0] = top
+            while inner_lay.count():
+                item = inner_lay.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+            events = state["events"]
+            if events:
+                for i, (ts, lvl, msg) in enumerate(events):
+                    inner_lay.addWidget(self._log_row(ts, lvl, msg, i < len(events) - 1))
+            else:
+                inner_lay.addWidget(make_txt("No events yet.", TEXT_MUTED, 15))
+            inner_lay.addStretch()
+
+        _refresh_dialog()
+        timer = QTimer(dlg)
+        timer.timeout.connect(_refresh_dialog)
+        timer.start(1000)
+
+        close_btn = QPushButton("Close")
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setFixedHeight(44)
+        close_btn.setStyleSheet(
+            f"QPushButton{{background:{PRIMARY};color:white;font-size:15px;font-weight:600;"
+            f"border-radius:12px;border:none;}}"
+            f"QPushButton:hover{{background:{PRIMARY2};}}")
+        close_btn.clicked.connect(dlg.accept)
+        outer.addWidget(close_btn)
+        dlg.exec_()
+
     def refresh(self):
         self.status_lbl.setText(state["system_status"])
         t = state["temperature"]
@@ -145,8 +210,9 @@ class DashboardPage(QScrollArea):
             self.light_sub.setStyleSheet(f"color:{TEXT_MUTED};font-size:14px;font-weight:700;")
 
         events = state["events"][:10]
-        if len(state["events"]) != self._last_event_count:
-            self._last_event_count = len(state["events"])
+        top = events[0] if events else None
+        if top != self._last_top_event:
+            self._last_top_event = top
             while self.log_lay.count():
                 item = self.log_lay.takeAt(0)
                 if item.widget(): item.widget().deleteLater()
