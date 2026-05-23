@@ -6,8 +6,9 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QStackedWidget)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QFont
+from datetime import datetime
 
-from gui.palette import PRIMARY, PRIMARY2, ACCENT, BG, WHITE, TEXT_MUTED
+from gui.palette import PRIMARY, PRIMARY2, ACCENT, BG, WHITE, TEXT_DARK, TEXT_MUTED, TEXT_MID
 from gui.pages.dashboard import DashboardPage
 from gui.pages.stats import StatsPage
 from gui.pages.schedule import SchedulePage
@@ -83,11 +84,23 @@ class AquariumApp(QMainWindow):
         tb = QWidget(); tb.setStyleSheet(f"background:{WHITE};border-bottom:1px solid #E8EDF2;")
         tb.setFixedHeight(76)
         tbl = QHBoxLayout(tb); tbl.setContentsMargins(24, 0, 24, 0)
-        logo = QLabel("≋  Aquarium Monitor")
+
+        self._clock_lbl = QLabel(datetime.now().strftime("%H:%M:%S"))
+        self._clock_lbl.setStyleSheet(f"color:{TEXT_DARK};font-size:20px;")
+        self._clock_lbl.setFixedWidth(90)
+
+        logo = QLabel("Aquarium Monitor")
         logo.setStyleSheet(f"color:{PRIMARY};font-size:26px;font-weight:700;")
-        tbl.addWidget(logo); tbl.addStretch()
-        bell = QLabel("🔔"); bell.setStyleSheet("font-size:28px;")
-        tbl.addWidget(bell)
+        logo.setAlignment(Qt.AlignCenter)
+
+        spacer = QLabel()
+        spacer.setFixedWidth(90)
+
+        tbl.addWidget(spacer)
+        tbl.addStretch()
+        tbl.addWidget(logo)
+        tbl.addStretch()
+        tbl.addWidget(self._clock_lbl)
         rl.addWidget(tb)
 
         # Pages
@@ -119,6 +132,7 @@ class AquariumApp(QMainWindow):
             b.set_active(i == idx)
 
     def _tick(self):
+        self._clock_lbl.setText(datetime.now().strftime("%H:%M:%S"))
         idx = self.stack.currentIndex()
         pages = [self.dash, self.stats, self.sched, self.sett]
         pages[idx].refresh()
