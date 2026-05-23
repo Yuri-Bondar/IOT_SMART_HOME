@@ -1,13 +1,17 @@
 # config.py - central configuration for the smart aquarium system
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 # We use the HiveMQ public broker for testing.
 # Anyone can connect to it - do not send sensitive data.
 BROKER_HOST = "broker.hivemq.com"
 BROKER_PORT = 1883  # plain TCP, no TLS needed for public broker
 # No username/password required for the public broker
 
-# Change this to your name so topics don't collide with other students
-TOPIC_PREFIX = "aquarium_hit_yuri"
+# Set IOT_USER in a .env file or env var to use a personal MQTT channel
+TOPIC_PREFIX = os.environ.get("IOT_USER", "aquarium_hit_admin")
 
 # --- MQTT Topics ---
 TOPIC_TEMPERATURE = TOPIC_PREFIX + "/sensor/temperature"
