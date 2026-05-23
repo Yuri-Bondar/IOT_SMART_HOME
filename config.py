@@ -24,22 +24,12 @@ TOPIC_ALERTS = TOPIC_PREFIX + "/alerts"
 TOPIC_WILDCARD = TOPIC_PREFIX + "/#"
 
 # --- Temperature thresholds (Celsius) ---
-# Normal range
 TEMP_MIN_NORMAL = 22.0
 TEMP_MAX_NORMAL = 28.0
-# Warning range (outside normal but not critical)
-TEMP_MIN_WARNING = 20.0
-TEMP_MAX_WARNING = 30.0
-# Alarm range (critical - danger to fish)
-TEMP_MIN_ALARM = 18.0
-TEMP_MAX_ALARM = 35.0
 
 # --- pH thresholds ---
 PH_MIN_NORMAL = 6.5
 PH_MAX_NORMAL = 8.0
-PH_MIN_WARNING = 6.0
-PH_MAX_WARNING = 8.5
 
 # --- Intervals (seconds) ---
-FEEDING_INTERVAL = 5
 SENSOR_INTERVAL = 3

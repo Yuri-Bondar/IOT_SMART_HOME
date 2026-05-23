@@ -11,24 +11,11 @@ import config
 
 # ── 1. Config sanity ─────────────────────────────────────────────────────────
 
-def test_temp_thresholds_order():
-    # alarm < warning < normal - if this is wrong, alerts will never trigger
-    assert config.TEMP_MIN_ALARM < config.TEMP_MIN_WARNING < config.TEMP_MIN_NORMAL
-    assert config.TEMP_MAX_NORMAL < config.TEMP_MAX_WARNING < config.TEMP_MAX_ALARM
-
-def test_ph_thresholds_order():
-    assert config.PH_MIN_WARNING < config.PH_MIN_NORMAL
-    assert config.PH_MAX_NORMAL < config.PH_MAX_WARNING
-
 def test_temp_normal_range_is_valid():
     assert config.TEMP_MIN_NORMAL < config.TEMP_MAX_NORMAL
 
 def test_ph_normal_range_is_valid():
     assert config.PH_MIN_NORMAL < config.PH_MAX_NORMAL
-
-def test_intervals_are_positive():
-    assert config.SENSOR_INTERVAL > 0
-    assert config.FEEDING_INTERVAL > 0
 
 def test_broker_port_is_standard():
     assert config.BROKER_PORT == 1883
