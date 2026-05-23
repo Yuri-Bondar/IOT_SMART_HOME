@@ -32,7 +32,7 @@ class StatsPage(QScrollArea):
         self.cur_temp = QLabel("--°C")
         self.cur_temp.setStyleSheet(f"color:{TEXT_DARK};font-size:48px;font-weight:700;")
         tl.addWidget(self.cur_temp)
-        self.temp_chart = LineChart(self._get_temp_data, ACCENT, 18, 35, time_axis=True,
+        self.temp_chart = LineChart(self._get_temp_data, ACCENT, 10, 40, time_axis=True,
                                     target_lo=allowed_ranges["temp_safe_min"],
                                     target_hi=allowed_ranges["temp_safe_max"])
         tl.addWidget(self.temp_chart)

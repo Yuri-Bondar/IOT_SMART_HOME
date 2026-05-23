@@ -94,8 +94,11 @@ class LineChart(QWidget):
             p.drawText(QRectF(pad, pad, chart_w, chart_h), Qt.AlignCenter, "Waiting for data...")
             return
 
-        lo = self.lo if self.lo is not None else min(data) - 1
-        hi = self.hi if self.hi is not None else max(data) + 1
+        if self.lo is not None and self.hi is not None:
+            lo, hi = self.lo, self.hi
+        else:
+            lo = self.lo if self.lo is not None else min(data) - 1
+            hi = self.hi if self.hi is not None else max(data) + 1
         rng = hi - lo if hi != lo else 1
 
         def pt(i, v):
@@ -121,14 +124,14 @@ class LineChart(QWidget):
 
         if self.target_lo is not None and self.target_hi is not None:
             band_pen = QPen(QColor(220, 50, 50, 150), 1, Qt.DashLine)
-            lbl_font = QFont(); lbl_font.setPixelSize(10)
+            lbl_font = QFont(); lbl_font.setPixelSize(11)
             for val in (self.target_lo, self.target_hi):
                 vy = h - pad_bot - ((val - lo) / rng) * chart_h
                 p.setPen(band_pen)
                 p.drawLine(QPointF(pad, vy), QPointF(pad + chart_w, vy))
                 p.setFont(lbl_font)
-                p.setPen(QColor(TEXT_MUTED))
-                p.drawText(pad + 2, int(vy) - 12, 36, 12, Qt.AlignLeft, str(val))
+                p.setPen(QColor(220, 50, 50, 200))
+                p.drawText(pad + 2, int(vy) - 13, 40, 13, Qt.AlignLeft, str(val))
 
         p.setPen(QPen(QColor(self.color), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         for i in range(n - 1):
