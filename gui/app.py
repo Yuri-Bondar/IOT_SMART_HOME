@@ -67,8 +67,8 @@ class AquariumApp(QMainWindow):
         super().__init__()
         self.mqtt_client = mqtt_client
         self.setWindowTitle("Aquarium Monitor")
-        self.setMinimumSize(1100, 1000)
-        self.resize(1200, 1050)
+        self.setMinimumSize(500, 700)
+        self.resize(600, 900)
         self.setStyleSheet(f"background:{BG};")
         self._build()
         self.timer = QTimer()
