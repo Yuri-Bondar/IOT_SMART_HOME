@@ -39,13 +39,6 @@ class SettingsPage(QScrollArea):
         hl.addWidget(s1); hl.addWidget(s2)
         lay.addWidget(hero)
 
-        # Notification Preferences
-        lay.addWidget(section_lbl("NOTIFICATION PREFERENCES"))
-        nc = QFrame(); nc.setStyleSheet(CARD_STYLE)
-        nl = QVBoxLayout(nc); nl.setContentsMargins(0, 0, 0, 0); nl.setSpacing(0)
-        nl.addWidget(self._notif_row("🔔", "Push Notifications", "Real-time alerts on your device", True))
-        lay.addWidget(nc)
-
         # Safe Ranges
         lay.addWidget(section_lbl("SAFE RANGES & ALERTS"))
         rc = QFrame(); rc.setStyleSheet(CARD_STYLE)
@@ -175,19 +168,6 @@ class SettingsPage(QScrollArea):
         allowed_ranges["ph_safe_min"] = mn; allowed_ranges["ph_safe_max"] = mx
         self.ph_safe_lbl.setText(f"{mn} – {mx}")
         self._recompute_warn("ph"); self._update_ph_warn_info(); self._publish_thresholds()
-
-    def _notif_row(self, ico, title, sub, checked):
-        w = QWidget(); w.setStyleSheet("background:transparent;")
-        row = QHBoxLayout(w); row.setContentsMargins(22, 18, 22, 18); row.setSpacing(16)
-        il = QLabel(ico); il.setFixedSize(50, 50); il.setAlignment(Qt.AlignCenter)
-        il.setStyleSheet("background:#F0F4F8;border-radius:25px;font-size:22px;")
-        row.addWidget(il)
-        info = QVBoxLayout(); info.setSpacing(4)
-        info.addWidget(make_txt(title, TEXT_DARK, 18, True))
-        info.addWidget(make_txt(sub, TEXT_MUTED, 14))
-        row.addLayout(info); row.addStretch()
-        row.addWidget(ToggleSwitch(checked))
-        return w
 
     def _publish_thresholds(self):
         try:
