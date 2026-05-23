@@ -20,7 +20,7 @@ last_ph = None
 _DEF_PCT = 10
 _ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
 _ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
-runtime_thresholds = {
+_THRESHOLD_DEFAULTS = {
     "temp_safe_min": config.TEMP_MIN_NORMAL,
     "temp_safe_max": config.TEMP_MAX_NORMAL,
     "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_PCT / 100, 1),
@@ -32,6 +32,29 @@ runtime_thresholds = {
 }
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "db", "aquarium.db")
+
+_THRESHOLD_KEYS = tuple(_THRESHOLD_DEFAULTS.keys())
+
+def load_runtime_thresholds_from_db():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        placeholders = ",".join("?" * len(_THRESHOLD_KEYS))
+        cur.execute(
+            "SELECT key, value FROM allowed_ranges WHERE key IN ({})".format(placeholders),
+            _THRESHOLD_KEYS
+        )
+        rows = dict(cur.fetchall())
+        conn.close()
+        if len(rows) == len(_THRESHOLD_KEYS):
+            print("Thresholds loaded from DB.")
+            return {k: float(rows[k]) for k in _THRESHOLD_KEYS}
+    except Exception:
+        pass
+    print("Thresholds: using config defaults.")
+    return dict(_THRESHOLD_DEFAULTS)
+
+runtime_thresholds = load_runtime_thresholds_from_db()
 
 last_fed_times = set()
 _last_minute = None
