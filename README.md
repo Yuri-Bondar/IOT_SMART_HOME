@@ -1,114 +1,223 @@
 # Smart Aquarium IoT System
 
-A simulation of a smart aquarium monitoring system built with Python, MQTT, and PyQt5.
-The system uses IoT concepts to monitor water temperature and pH, control lighting,
-automate fish feeding, and alert when conditions are dangerous.
+A complete IoT monitoring and control system for a smart aquarium, built as a course project at HIT (Holon Institute of Technology), IoT 2026.
 
-## System Architecture
+The system monitors water temperature and pH in real time, controls feeding and lighting, stores all data locally, and alerts the user when sensor readings go out of range.
+
+---
+
+## Architecture
 
 ```
-[Temp/pH Sensor] ──┐
-[Feeding Button] ──┼──► [HiveMQ Broker] ──► [Data Manager] ──► [SQLite DB]
-[Light Relay]    ──┘           │
-                               └──────────────► [Main GUI]
+┌─────────────────────────────────────────────────────┐
+│                   MQTT Broker                        │
+│              (broker.hivemq.com:1883)                │
+└───────────┬──────────────────────────┬──────────────┘
+            │                          │
+   ┌────────┴────────┐        ┌────────┴────────┐
+   │   Emulators     │        │  Data Manager   │
+   │ • temp_ph_sensor│        │ • Subscribes to │
+   │ • feeding_button│        │   all topics    │
+   │ • light_relay   │        │ • Saves to DB   │
+   └─────────────────┘        │ • Sends alerts  │
+                               └────────┬────────┘
+                                        │
+                               ┌────────┴────────┐
+                               │   SQLite DB     │
+                               │  aquarium.db    │
+                               └────────┬────────┘
+                                        │
+                               ┌────────┴────────┐
+                               │    GUI App      │
+                               │ • Dashboard     │
+                               │ • Stats/Charts  │
+                               │ • Schedule      │
+                               │ • Settings      │
+                               └─────────────────┘
 ```
+
+All components communicate through MQTT. The GUI subscribes directly to the broker for live updates and also reads from the local database for history and charts.
+
+---
 
 ## Components
 
-- **temp_ph_sensor.py** - Simulates a temperature and pH sensor (data producer). Publishes readings every few seconds.
-- **feeding_button.py** - Simulates an automatic feeding button that dispenses food at regular intervals.
-- **light_relay.py** - Controls the aquarium LED light with a day/night schedule (ON 08:00-22:00).
-- **data_manager.py** - Subscribes to all MQTT topics, logs data to SQLite, and generates warnings/alarms.
-- **main_gui.py** - PyQt5 dashboard showing live sensor data, controls, and a color-coded event log.
+### Emulators (`emulators/`)
 
-## MQTT Broker Setup
+| File | Type | Description |
+|------|------|-------------|
+| `temp_ph_sensor.py` | Sensor (data producer) | Publishes temperature and pH readings every 3 seconds. 85% of readings are in normal range; 15% are random spikes to trigger alerts. |
+| `feeding_button.py` | Actuator (button) | Listens for feed commands from the GUI, simulates food dispensing, and publishes a confirmation status back. |
+| `light_relay.py` | Actuator (relay) | Controls aquarium lighting. Responds to manual on/off commands and fires automatically at scheduled on/off times (trigger-once logic — no repeated firing). |
 
-This project uses the **free HiveMQ public broker** - no registration or password needed!
+### Data Manager (`data_manager/data_manager.py`)
 
-- Host: `broker.hivemq.com`
-- Port: `1883` (plain TCP)
+- Connects to the MQTT broker and subscribes to all aquarium topics
+- Saves every sensor reading, feeding event, light event, and alert to SQLite
+- Checks temperature and pH against configurable thresholds and publishes WARNING / ALARM messages
+- Listens for threshold updates from the GUI settings page and applies them immediately (no restart needed)
+- Runs a background thread that checks the feeding schedule every 30 seconds and triggers automatic feeds
 
-**Important:** Change `TOPIC_PREFIX` in `config.py` to something unique (like your name) so your
-messages don't mix with other students on the public broker.
+### GUI App (`gui/`)
 
-### Monitor Messages in Browser
+Built with **PyQt5**. Four pages accessible from a bottom navigation bar:
 
-You can watch all MQTT messages live using the HiveMQ WebSocket client:
+- **Dashboard** — live temperature, pH, light state, last feed time, system status, and a scrollable event log with a "View All" live popup dialog
+- **Stats** — historical charts for temperature and pH with color-coded warning/alarm threshold lines
+- **Schedule** — manage feeding schedule (add/remove/enable times) and set light on/off times; changes persist to DB and publish to the relay via MQTT
+- **Settings** — adjust safe ranges and warning buffer (%) for temperature and pH using sliders; changes publish to the data manager live
 
-1. Go to https://www.hivemq.com/demos/websocket-client/
-2. Set Host to `broker.hivemq.com`, Port to `8000`
-3. Click **Connect**
-4. Subscribe to `aquarium_hit_yuri/#` (or whatever your prefix is)
-5. You'll see all messages in real time!
+### Database (`db/aquarium.db`)
 
-## Installation (Windows)
+SQLite database, created automatically on first run:
 
-```
-py -m pip install -r requirements.txt
-```
+| Table | Contents |
+|-------|----------|
+| `sensor_readings` | All temperature and pH readings |
+| `feeding_events` | Feed commands with action, amount, timestamp |
+| `light_events` | Light state changes with source (manual / schedule) |
+| `alerts` | All WARNING and ALARM events |
+| `feeding_schedules` | Named feeding times with enabled/disabled flag |
+| `light_schedule` | Single row with on_time and off_time |
+| `allowed_ranges` | Persisted threshold values including warn percentages |
 
-## How to Run
+---
 
-Open **5 separate terminals** and run each component in this order:
+## MQTT Topics
 
-```bash
-# Terminal 1 - start the data manager first:
-py data_manager/data_manager.py
-
-# Terminal 2 - temperature and pH sensor:
-py emulators/temp_ph_sensor.py
-
-# Terminal 3 - feeding button:
-py emulators/feeding_button.py
-
-# Terminal 4 - light relay:
-py emulators/light_relay.py
-
-# Terminal 5 - GUI dashboard:
-py gui/main_gui.py
-```
-
-## Changing Thresholds
-
-All thresholds are configured in `config.py`. Just edit the values and restart:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| TEMP_MIN_NORMAL | 22.0°C | Lower bound of normal temperature |
-| TEMP_MAX_NORMAL | 28.0°C | Upper bound of normal temperature |
-| TEMP_MIN_WARNING | 20.0°C | Lower bound of warning range |
-| TEMP_MAX_WARNING | 30.0°C | Upper bound of warning range |
-| TEMP_MIN_ALARM | 18.0°C | Critical low temperature |
-| TEMP_MAX_ALARM | 35.0°C | Critical high temperature |
-| PH_MIN_NORMAL | 6.5 | Lower bound of normal pH |
-| PH_MAX_NORMAL | 8.0 | Upper bound of normal pH |
-| PH_MIN_WARNING | 6.0 | Lower bound of warning pH |
-| PH_MAX_WARNING | 8.5 | Upper bound of warning pH |
-
-## MQTT Topic Map
+All topics are prefixed with the value of `TOPIC_PREFIX` (default: `aquarium_hit_admin`).  
+Override by setting `IOT_USER` in a `.env` file.
 
 | Topic | Direction | Description |
 |-------|-----------|-------------|
-| `{prefix}/sensor/temperature` | Sensor → Broker | Temperature readings (°C) |
-| `{prefix}/sensor/ph` | Sensor → Broker | pH level readings |
-| `{prefix}/feeding/command` | Button/GUI → Broker | Feed command trigger |
-| `{prefix}/feeding/status` | Data Manager → Broker | Feeding confirmation |
-| `{prefix}/light/command` | GUI → Broker | Light on/off command |
-| `{prefix}/light/status` | Light Relay → Broker | Current light state |
-| `{prefix}/alerts` | Data Manager → Broker | Warning and alarm messages |
+| `{prefix}/sensor/temperature` | Sensor → All | Temperature reading |
+| `{prefix}/sensor/ph` | Sensor → All | pH reading |
+| `{prefix}/feeding/command` | GUI → Feeder | Trigger a feed |
+| `{prefix}/feeding/status` | Feeder → All | Feed completed confirmation |
+| `{prefix}/light/command` | GUI → Relay | Turn light on/off |
+| `{prefix}/light/status` | Relay → All | Light state change |
+| `{prefix}/alerts` | Data Manager → GUI | WARNING / ALARM events |
+| `{prefix}/config/thresholds` | GUI → Data Manager | Updated threshold values |
+| `{prefix}/config/light_schedule` | GUI → Relay | Updated on/off schedule |
 
-## Database Schema
+### Monitor live messages in browser
 
-The SQLite database (`db/aquarium.db`) is created automatically on first run.
+1. Go to https://www.hivemq.com/demos/websocket-client/
+2. Host: `broker.hivemq.com`, Port: `8000` → **Connect**
+3. Subscribe to `aquarium_hit_admin/#` (or your custom prefix)
 
-**sensor_readings** - Stores temperature and pH readings
-- id, sensor_type, value, unit, timestamp
+---
 
-**feeding_events** - Logs each feeding event
-- id, action, amount, timestamp
+## Alert Logic
 
-**light_events** - Logs light state changes
-- id, state, source, timestamp
+Two severity levels:
 
-**alerts** - Stores warning and alarm events
-- id, level, message, value, threshold, timestamp
+- **WARNING** — reading is inside the safe range but past the warning buffer (default: within 10% of the edge)
+- **ALARM** — reading is outside the safe range entirely
+
+Default thresholds (configurable live from the Settings page):
+
+| Parameter | Safe Range | Default Warn Buffer |
+|-----------|------------|---------------------|
+| Temperature | 22.0 – 28.0 °C | 10% from each edge |
+| pH | 6.5 – 8.0 | 10% from each edge |
+
+---
+
+## Project Structure
+
+```
+Smart Aquarium IoT Project/
+├── config.py                  # Broker address, topics, default thresholds
+├── emulators/
+│   ├── temp_ph_sensor.py      # Temperature & pH sensor emulator
+│   ├── feeding_button.py      # Feeding actuator emulator
+│   └── light_relay.py         # Light relay emulator
+├── data_manager/
+│   └── data_manager.py        # MQTT subscriber, DB writer, alert engine
+├── gui/
+│   ├── app.py                 # Main window, navigation
+│   ├── state.py               # Shared state, MQTT callbacks, DB helpers
+│   ├── palette.py             # Color constants
+│   ├── widgets.py             # RangeSlider, LineChart, ToggleSwitch, etc.
+│   ├── main_gui.py            # Entry point (starts MQTT + launches app)
+│   └── pages/
+│       ├── dashboard.py       # Live readings + event log
+│       ├── stats.py           # Historical charts
+│       ├── schedule.py        # Feeding & light schedule management
+│       └── settings.py        # Threshold sliders
+├── db/
+│   └── aquarium.db            # SQLite database (auto-created on first run)
+├── tests/
+│   └── test_sanity.py         # 40 unit tests
+└── README.md
+```
+
+---
+
+## Setup & Running
+
+### Requirements
+
+```
+Python 3.10+
+paho-mqtt
+PyQt5
+python-dotenv
+pytest  (for tests only)
+```
+
+Install:
+
+```bash
+pip install paho-mqtt PyQt5 python-dotenv
+```
+
+Or on Windows:
+
+```bash
+py -m pip install -r requirements.txt
+```
+
+### Optional: custom MQTT prefix
+
+Create a `.env` file in the project root:
+
+```
+IOT_USER=your_unique_prefix
+```
+
+### Running
+
+Open 5 terminals and start each component:
+
+```bash
+# 1. Data Manager (start first)
+py data_manager/data_manager.py
+
+# 2. Temperature & pH sensor
+py emulators/temp_ph_sensor.py
+
+# 3. Feeding button emulator
+py emulators/feeding_button.py
+
+# 4. Light relay emulator
+py emulators/light_relay.py
+
+# 5. GUI application
+py gui/main_gui.py
+```
+
+### Tests
+
+```bash
+py -m pytest tests/ -v
+```
+
+40 tests covering config sanity, threshold defaults, alert logic, database writes, boundary conditions, color helpers, save/load round-trip, and feeding deduplication.
+
+---
+
+## Course
+
+HIT — Internet of Things, 2026
