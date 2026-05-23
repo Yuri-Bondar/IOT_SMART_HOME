@@ -259,3 +259,122 @@ def test_alert_level_is_valid():
         payload = json.dumps({"level": level, "message": "test", "value": 0, "threshold": 0, "timestamp": ""})
         data = json.loads(payload)
         assert data["level"] in ("WARNING", "ALARM", "INFO")
+
+# ── 6. Alert functions (data_manager) ────────────────────────────────────────
+
+from unittest.mock import MagicMock, patch
+import data_manager.data_manager as dm
+
+def test_no_alert_published_for_normal_temp():
+    client = MagicMock()
+    dm.runtime_thresholds = _build_threshold_defaults()
+    dm.check_temperature_alerts(client, 25.0, "2026-01-01T00:00:00")
+    client.publish.assert_not_called()
+
+def test_no_alert_published_for_normal_ph():
+    client = MagicMock()
+    dm.runtime_thresholds = _build_threshold_defaults()
+    dm.check_ph_alerts(client, 7.0, "2026-01-01T00:00:00")
+    client.publish.assert_not_called()
+
+# ── 7. Boundary conditions ────────────────────────────────────────────────────
+
+def test_temp_exactly_at_warn_max_is_warning():
+    assert get_temp_alert_level(_T["temp_warn_max"], _T) == "WARNING"
+
+def test_temp_exactly_at_safe_max_is_warning_not_alarm():
+    # safe_max is inclusive lower bound of warning zone (condition is >)
+    assert get_temp_alert_level(_T["temp_safe_max"], _T) == "WARNING"
+
+def test_temp_just_above_safe_max_is_alarm():
+    assert get_temp_alert_level(_T["temp_safe_max"] + 0.1, _T) == "ALARM"
+
+def test_ph_exactly_at_warn_min_is_warning():
+    assert get_ph_alert_level(_T["ph_warn_min"], _T) == "WARNING"
+
+# ── 8. save / load allowed_ranges round-trip ─────────────────────────────────
+
+import gui.state as gs
+
+def test_save_load_allowed_ranges_roundtrip(tmp_path, monkeypatch):
+    db = str(tmp_path / "ar.db")
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE allowed_ranges (key TEXT PRIMARY KEY, value REAL NOT NULL)")
+    conn.commit(); conn.close()
+
+    monkeypatch.setattr(gs, "DB_PATH", db)
+
+    test_ranges = {
+        "temp_safe_min": 20.0, "temp_safe_max": 30.0,
+        "temp_warn_min": 22.0, "temp_warn_max": 28.0,
+        "ph_safe_min": 6.0,   "ph_safe_max": 8.5,
+        "ph_warn_min": 6.2,   "ph_warn_max": 8.3,
+    }
+    gs.save_allowed_ranges(dict(test_ranges))
+    loaded = gs.load_allowed_ranges()
+
+    for key in test_ranges:
+        assert float(loaded[key]) == test_ranges[key], f"Mismatch on {key}"
+
+# ── 9. Color helper functions ─────────────────────────────────────────────────
+
+from gui.palette import SUCCESS, WARNING as WARN_COLOR, DANGER
+
+def test_get_temp_color_normal():
+    backup = dict(gs.allowed_ranges)
+    gs.allowed_ranges.update(_T)
+    assert gs.get_temp_color(25.0) == SUCCESS
+    gs.allowed_ranges.update(backup)
+
+def test_get_temp_color_warning():
+    backup = dict(gs.allowed_ranges)
+    gs.allowed_ranges.update(_T)
+    assert gs.get_temp_color(27.5) == WARN_COLOR
+    gs.allowed_ranges.update(backup)
+
+def test_get_temp_color_alarm():
+    backup = dict(gs.allowed_ranges)
+    gs.allowed_ranges.update(_T)
+    assert gs.get_temp_color(29.0) == DANGER
+    gs.allowed_ranges.update(backup)
+
+# ── 10. System status resets to optimal ──────────────────────────────────────
+
+def test_system_status_resets_to_optimal():
+    from gui.state import state, add_event
+    state["events"] = []
+    add_event("ALARM", "critical!")
+    assert state["system_status"] == "Alert Active"
+    for i in range(5):
+        add_event("INFO", f"normal {i}")
+    assert state["system_status"] == "System Optimal"
+
+# ── 11. Feeding deduplication ─────────────────────────────────────────────────
+
+def test_feeding_not_triggered_twice_same_minute(tmp_path, monkeypatch):
+    fixed_minute = "14:30"
+
+    db = str(tmp_path / "feed.db")
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE feeding_schedules
+                    (id INTEGER PRIMARY KEY, name TEXT, time TEXT, enabled INTEGER)""")
+    conn.execute("INSERT INTO feeding_schedules VALUES (1,'Test',?,1)", (fixed_minute,))
+    conn.execute("""CREATE TABLE feeding_events
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, amount TEXT, timestamp TEXT)""")
+    conn.commit(); conn.close()
+
+    monkeypatch.setattr(dm, "DB_PATH", db)
+    monkeypatch.setattr(dm, "last_fed_times", set())
+    monkeypatch.setattr(dm, "_last_minute", None)
+
+    fake_now = MagicMock()
+    fake_now.strftime.return_value = fixed_minute
+    fake_now.isoformat.return_value = "2026-01-01T14:30:00"
+
+    client = MagicMock()
+    with patch("data_manager.data_manager.datetime") as mock_dt:
+        mock_dt.now.return_value = fake_now
+        dm.check_feeding_schedule(client)
+        dm.check_feeding_schedule(client)
+
+    assert client.publish.call_count == 1
