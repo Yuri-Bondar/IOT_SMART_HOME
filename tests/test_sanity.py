@@ -93,44 +93,50 @@ def test_temp_value_is_float():
 
 # ── 3. Alert logic ────────────────────────────────────────────────────────────
 
-def get_temp_alert_level(temp):
-    # mirrors the logic in data_manager
-    if temp < config.TEMP_MIN_WARNING or temp > config.TEMP_MAX_WARNING:
+def get_temp_alert_level(temp, thresholds):
+    if temp < thresholds["temp_safe_min"] or temp > thresholds["temp_safe_max"]:
         return "ALARM"
-    elif temp < config.TEMP_MIN_NORMAL or temp > config.TEMP_MAX_NORMAL:
+    elif temp <= thresholds["temp_warn_min"] or temp >= thresholds["temp_warn_max"]:
         return "WARNING"
-    return "OK"
+    return None
 
-def get_ph_alert_level(ph):
-    if ph < config.PH_MIN_WARNING or ph > config.PH_MAX_WARNING:
+def get_ph_alert_level(ph, thresholds):
+    if ph < thresholds["ph_safe_min"] or ph > thresholds["ph_safe_max"]:
         return "ALARM"
-    elif ph < config.PH_MIN_NORMAL or ph > config.PH_MAX_NORMAL:
+    elif ph <= thresholds["ph_warn_min"] or ph >= thresholds["ph_warn_max"]:
         return "WARNING"
-    return "OK"
+    return None
+
+_T = {
+    "temp_safe_min": 22.0, "temp_safe_max": 28.0,
+    "temp_warn_min": 22.6, "temp_warn_max": 27.4,
+    "ph_safe_min": 6.5, "ph_safe_max": 8.0,
+    "ph_warn_min": 6.6, "ph_warn_max": 7.9,
+}
 
 def test_normal_temp_no_alert():
-    assert get_temp_alert_level(25.0) == "OK"
+    assert get_temp_alert_level(25.0, _T) is None
 
 def test_temp_too_high_warning():
-    assert get_temp_alert_level(config.TEMP_MAX_NORMAL + 0.5) == "WARNING"
+    assert get_temp_alert_level(27.5, _T) == "WARNING"
 
 def test_temp_too_low_warning():
-    assert get_temp_alert_level(config.TEMP_MIN_NORMAL - 0.5) == "WARNING"
+    assert get_temp_alert_level(22.5, _T) == "WARNING"
 
 def test_temp_critical_high_alarm():
-    assert get_temp_alert_level(config.TEMP_MAX_WARNING + 1.0) == "ALARM"
+    assert get_temp_alert_level(28.5, _T) == "ALARM"
 
 def test_temp_critical_low_alarm():
-    assert get_temp_alert_level(config.TEMP_MIN_WARNING - 1.0) == "ALARM"
+    assert get_temp_alert_level(21.5, _T) == "ALARM"
 
 def test_normal_ph_no_alert():
-    assert get_ph_alert_level(7.0) == "OK"
+    assert get_ph_alert_level(7.0, _T) is None
 
 def test_ph_too_high_warning():
-    assert get_ph_alert_level(config.PH_MAX_NORMAL + 0.1) == "WARNING"
+    assert get_ph_alert_level(7.95, _T) == "WARNING"
 
 def test_ph_critical_alarm():
-    assert get_ph_alert_level(config.PH_MAX_WARNING + 0.1) == "ALARM"
+    assert get_ph_alert_level(8.1, _T) == "ALARM"
 
 # ── 4. Database writes ────────────────────────────────────────────────────────
 
