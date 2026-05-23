@@ -297,5 +297,3 @@ class SchedulePage(QScrollArea):
             update_feeding_schedule(row_id, name, f"{t.hour():02d}:{t.minute():02d}", r["enabled"])
             self._rebuild_feed_rows()
 
-    def refresh(self):
-        pass

@@ -134,5 +134,6 @@ class AquariumApp(QMainWindow):
     def _tick(self):
         self._clock_lbl.setText(datetime.now().strftime("%H:%M:%S"))
         idx = self.stack.currentIndex()
-        pages = [self.dash, self.stats, self.sched, self.sett]
-        pages[idx].refresh()
+        pages = [self.dash, self.stats, None, None]
+        if pages[idx]:
+            pages[idx].refresh()

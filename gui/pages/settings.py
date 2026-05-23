@@ -176,5 +176,3 @@ class SettingsPage(QScrollArea):
             add_event("WARNING", "Failed to publish threshold update")
         save_allowed_ranges(allowed_ranges)
 
-    def refresh(self):
-        pass

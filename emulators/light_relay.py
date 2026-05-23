@@ -75,7 +75,7 @@ def on_message(client, userdata, msg):
             print("Unknown light command: " + str(command))
 
 def main():
-    global light_on
+    global light_on, last_fired
 
     client = mqtt.Client()
     client.on_connect = on_connect
@@ -97,7 +97,6 @@ def main():
 
     try:
         while True:
-            global last_fired
             now_str = datetime.now().strftime("%H:%M")
             tag_on  = "on@"  + schedule_on
             tag_off = "off@" + schedule_off

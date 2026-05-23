@@ -173,23 +173,10 @@ def init_db():
     """)
     cursor.execute("SELECT COUNT(*) FROM allowed_ranges")
     if cursor.fetchone()[0] == 0:
-        _ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
-        _ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
-        _pct = 10
+        defaults = _build_threshold_defaults()
         cursor.executemany(
             "INSERT INTO allowed_ranges (key, value) VALUES (?, ?)",
-            [
-                ("temp_safe_min", config.TEMP_MIN_NORMAL),
-                ("temp_safe_max", config.TEMP_MAX_NORMAL),
-                ("temp_warn_min", round(config.TEMP_MIN_NORMAL + _ts * _pct / 100, 1)),
-                ("temp_warn_max", round(config.TEMP_MAX_NORMAL - _ts * _pct / 100, 1)),
-                ("ph_safe_min",   config.PH_MIN_NORMAL),
-                ("ph_safe_max",   config.PH_MAX_NORMAL),
-                ("ph_warn_min",   round(config.PH_MIN_NORMAL + _ps * _pct / 100, 1)),
-                ("ph_warn_max",   round(config.PH_MAX_NORMAL - _ps * _pct / 100, 1)),
-                ("temp_warn_pct", 10.0),
-                ("ph_warn_pct",   10.0),
-            ]
+            list(defaults.items()) + [("temp_warn_pct", 10.0), ("ph_warn_pct", 10.0)]
         )
 
     conn.commit()
@@ -364,15 +351,6 @@ def on_message(client, userdata, msg):
         runtime_thresholds.update(updated)
         print(f"[{now}] Thresholds updated: {updated}")
 
-    elif topic == config.TOPIC_ALERTS:
-        # alerts are already saved when they are generated
-        # but if we get alerts from somewhere else, save them too
-        level = data.get("level", "INFO")
-        message = data.get("message", "")
-        value = data.get("value", 0)
-        threshold = data.get("threshold", 0)
-        ts = data.get("timestamp", now)
-        # don't double-save our own alerts (they're saved in publish_alert)
 
 def main():
     init_db()

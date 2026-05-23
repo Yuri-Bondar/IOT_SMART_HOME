@@ -36,47 +36,53 @@ def test_all_topics_start_with_prefix():
     for topic in topics:
         assert topic.startswith(config.TOPIC_PREFIX), f"Topic {topic} doesn't start with prefix"
 
-# ── 2. Sensor data format ─────────────────────────────────────────────────────
+# ── 2. Threshold defaults ─────────────────────────────────────────────────────
 
-def make_temp_payload(value):
-    return json.dumps({
-        "value": value,
-        "unit": "celsius",
-        "timestamp": datetime.now().isoformat()
-    })
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from data_manager.data_manager import _build_threshold_defaults
 
-def make_ph_payload(value):
-    return json.dumps({
-        "value": value,
-        "unit": "pH",
-        "timestamp": datetime.now().isoformat()
-    })
+def test_warn_range_inside_safe_range_temp():
+    d = _build_threshold_defaults()
+    assert d["temp_warn_min"] > d["temp_safe_min"]
+    assert d["temp_warn_max"] < d["temp_safe_max"]
 
-def test_temp_payload_is_valid_json():
-    payload = make_temp_payload(25.0)
-    data = json.loads(payload)
-    assert "value" in data
-    assert "unit" in data
-    assert "timestamp" in data
+def test_warn_range_inside_safe_range_ph():
+    d = _build_threshold_defaults()
+    assert d["ph_warn_min"] > d["ph_safe_min"]
+    assert d["ph_warn_max"] < d["ph_safe_max"]
 
-def test_ph_payload_is_valid_json():
-    payload = make_ph_payload(7.0)
-    data = json.loads(payload)
-    assert "value" in data
-    assert "unit" in data
-    assert "timestamp" in data
+def test_defaults_match_config():
+    d = _build_threshold_defaults()
+    assert d["temp_safe_min"] == config.TEMP_MIN_NORMAL
+    assert d["temp_safe_max"] == config.TEMP_MAX_NORMAL
+    assert d["ph_safe_min"]   == config.PH_MIN_NORMAL
+    assert d["ph_safe_max"]   == config.PH_MAX_NORMAL
 
-def test_temp_payload_unit():
-    data = json.loads(make_temp_payload(25.0))
-    assert data["unit"] == "celsius"
+def test_load_allowed_ranges_fallback_to_defaults():
+    from gui.state import _ar_defaults
+    d = _ar_defaults()
+    assert d["temp_safe_min"] < d["temp_safe_max"]
+    assert d["temp_warn_min"] > d["temp_safe_min"]
+    assert d["temp_warn_max"] < d["temp_safe_max"]
 
-def test_ph_payload_unit():
-    data = json.loads(make_ph_payload(7.0))
-    assert data["unit"] == "pH"
+def test_add_event_caps_at_50():
+    from gui.state import state, add_event
+    state["events"] = []
+    for i in range(55):
+        add_event("INFO", f"event {i}")
+    assert len(state["events"]) <= 50
 
-def test_temp_value_is_float():
-    data = json.loads(make_temp_payload(25.3))
-    assert isinstance(data["value"], float)
+def test_system_status_alarm():
+    from gui.state import state, add_event
+    state["events"] = []
+    add_event("ALARM", "critical!")
+    assert state["system_status"] == "Alert Active"
+
+def test_system_status_warning():
+    from gui.state import state, add_event
+    state["events"] = []
+    add_event("WARNING", "warning!")
+    assert state["system_status"] == "Warning Active"
 
 # ── 3. Alert logic ────────────────────────────────────────────────────────────
 
