@@ -1,2 +1,4 @@
 paho-mqtt>=1.6.1
 PyQt5>=5.15.0
+python-dotenv>=1.0.0
+pytest>=9.0.0
