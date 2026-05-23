@@ -18,18 +18,20 @@ last_ph = None
 
 # runtime thresholds — updated live via MQTT from the GUI settings
 _DEF_PCT = 10
-_ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
-_ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
-_THRESHOLD_DEFAULTS = {
-    "temp_safe_min": config.TEMP_MIN_NORMAL,
-    "temp_safe_max": config.TEMP_MAX_NORMAL,
-    "temp_warn_min": round(config.TEMP_MIN_NORMAL + _ts * _DEF_PCT / 100, 1),
-    "temp_warn_max": round(config.TEMP_MAX_NORMAL - _ts * _DEF_PCT / 100, 1),
-    "ph_safe_min":   config.PH_MIN_NORMAL,
-    "ph_safe_max":   config.PH_MAX_NORMAL,
-    "ph_warn_min":   round(config.PH_MIN_NORMAL + _ps * _DEF_PCT / 100, 1),
-    "ph_warn_max":   round(config.PH_MAX_NORMAL - _ps * _DEF_PCT / 100, 1),
-}
+def _build_threshold_defaults():
+    ts = config.TEMP_MAX_NORMAL - config.TEMP_MIN_NORMAL
+    ps = config.PH_MAX_NORMAL   - config.PH_MIN_NORMAL
+    return {
+        "temp_safe_min": config.TEMP_MIN_NORMAL,
+        "temp_safe_max": config.TEMP_MAX_NORMAL,
+        "temp_warn_min": round(config.TEMP_MIN_NORMAL + ts * _DEF_PCT / 100, 1),
+        "temp_warn_max": round(config.TEMP_MAX_NORMAL - ts * _DEF_PCT / 100, 1),
+        "ph_safe_min":   config.PH_MIN_NORMAL,
+        "ph_safe_max":   config.PH_MAX_NORMAL,
+        "ph_warn_min":   round(config.PH_MIN_NORMAL + ps * _DEF_PCT / 100, 1),
+        "ph_warn_max":   round(config.PH_MAX_NORMAL - ps * _DEF_PCT / 100, 1),
+    }
+_THRESHOLD_DEFAULTS = _build_threshold_defaults()
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "db", "aquarium.db")
 

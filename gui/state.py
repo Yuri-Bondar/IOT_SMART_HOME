@@ -27,7 +27,6 @@ temp_warn_pct = _DEF_WARN_PCT
 ph_warn_pct   = _DEF_WARN_PCT
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'db', 'aquarium.db')
-_AR_DB_PATH = DB_PATH  # internal alias kept for brevity
 _AR_KEYS = ["temp_safe_min", "temp_safe_max", "temp_warn_min", "temp_warn_max",
             "ph_safe_min", "ph_safe_max", "ph_warn_min", "ph_warn_max",
             "temp_warn_pct", "ph_warn_pct"]
@@ -53,7 +52,7 @@ def _ar_defaults():
 def load_allowed_ranges():
     global temp_warn_pct, ph_warn_pct
     try:
-        conn = sqlite3.connect(_AR_DB_PATH)
+        conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         cur.execute("SELECT key, value FROM allowed_ranges")
         rows = {k: v for k, v in cur.fetchall()}
@@ -71,7 +70,7 @@ def save_allowed_ranges(allowed_ranges):
     allowed_ranges["temp_warn_pct"] = temp_warn_pct
     allowed_ranges["ph_warn_pct"]   = ph_warn_pct
     try:
-        conn = sqlite3.connect(_AR_DB_PATH)
+        conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         cur.executemany(
             "INSERT OR REPLACE INTO allowed_ranges (key, value) VALUES (?, ?)",
