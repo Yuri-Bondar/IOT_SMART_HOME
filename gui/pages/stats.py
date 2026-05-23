@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QFrame)
 from PyQt5.QtCore import Qt
 from gui.palette import (PRIMARY2, BG, WHITE, TEXT_DARK, TEXT_MUTED, ACCENT, CARD_STYLE)
-from gui.state import state, allowed_ranges
+from gui.state import state, allowed_ranges, MAX_HISTORY
 from gui.widgets import LineChart, make_txt
 
 
@@ -79,15 +79,15 @@ class StatsPage(QScrollArea):
 
     def _get_temp_data(self):
         data = state["temp_history"]
-        return data[-4800:] if len(data) > 4800 else list(data)
+        return data[-MAX_HISTORY:] if len(data) > MAX_HISTORY else list(data)
 
     def _get_ph_data(self):
         data = state["ph_history"]
-        return data[-4800:] if len(data) > 4800 else list(data)
+        return data[-MAX_HISTORY:] if len(data) > MAX_HISTORY else list(data)
 
     def refresh(self):
         t = state["temperature"]
-        self.cur_temp.setText(f"{t}°C" if t else "--°C")
+        self.cur_temp.setText(f"{t}°C" if t is not None else "--°C")
         th = self._get_temp_data()
         self.temp_avg.setText(f"Avg: {sum(th)/len(th):.1f}°C" if th else "Avg: --")
         self.temp_peak.setText(f"Peak: {max(th):.1f}°C" if th else "Peak: --")
@@ -96,8 +96,8 @@ class StatsPage(QScrollArea):
         self.temp_chart.update()
 
         ph = state["ph"]
-        self.cur_ph.setText(f"{ph} pH" if ph else "-- pH")
-        self.ph_last.setText(f"Last: {ph} pH" if ph else "Last: -- pH")
+        self.cur_ph.setText(f"{ph} pH" if ph is not None else "-- pH")
+        self.ph_last.setText(f"Last: {ph} pH" if ph is not None else "Last: -- pH")
         self.ph_chart.target_lo = allowed_ranges["ph_safe_min"]
         self.ph_chart.target_hi = allowed_ranges["ph_safe_max"]
         self.ph_chart.update()

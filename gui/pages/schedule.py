@@ -298,4 +298,4 @@ class SchedulePage(QScrollArea):
             self._rebuild_feed_rows()
 
     def refresh(self):
-        self._rebuild_feed_rows()
+        pass

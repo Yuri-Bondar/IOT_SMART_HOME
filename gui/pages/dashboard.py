@@ -18,6 +18,7 @@ class DashboardPage(QScrollArea):
     def __init__(self, mqtt_client, parent=None):
         super().__init__(parent)
         self.mqtt_client = mqtt_client
+        self._last_event_count = 0
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -143,12 +144,14 @@ class DashboardPage(QScrollArea):
             self.light_sub.setText("STATUS: OFF")
             self.light_sub.setStyleSheet(f"color:{TEXT_MUTED};font-size:14px;font-weight:700;")
 
-        while self.log_lay.count():
-            item = self.log_lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
         events = state["events"][:10]
-        for i, (ts, lvl, msg) in enumerate(events):
-            self.log_lay.addWidget(self._log_row(ts, lvl, msg, i < len(events) - 1))
+        if len(state["events"]) != self._last_event_count:
+            self._last_event_count = len(state["events"])
+            while self.log_lay.count():
+                item = self.log_lay.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+            for i, (ts, lvl, msg) in enumerate(events):
+                self.log_lay.addWidget(self._log_row(ts, lvl, msg, i < len(events) - 1))
 
     def _log_row(self, ts, lvl, msg, div):
         w = QWidget(); w.setStyleSheet("background:transparent;")

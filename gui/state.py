@@ -3,7 +3,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import json
-import time
 import sqlite3
 from datetime import datetime
 import config
@@ -28,7 +27,7 @@ temp_warn_pct = _DEF_WARN_PCT
 ph_warn_pct   = _DEF_WARN_PCT
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'db', 'aquarium.db')
-_AR_DB_PATH = DB_PATH
+_AR_DB_PATH = DB_PATH  # internal alias kept for brevity
 _AR_KEYS = ["temp_safe_min", "temp_safe_max", "temp_warn_min", "temp_warn_max",
             "ph_safe_min", "ph_safe_max", "ph_warn_min", "ph_warn_max",
             "temp_warn_pct", "ph_warn_pct"]
@@ -139,12 +138,6 @@ def on_connect(client, userdata, flags, rc):
 
 def on_disconnect(client, userdata, rc):
     add_event("WARNING", "Disconnected from broker")
-    while True:
-        try:
-            client.reconnect()
-            break
-        except Exception:
-            time.sleep(5)
 
 
 def on_message(client, userdata, msg):
