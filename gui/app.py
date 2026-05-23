@@ -46,7 +46,8 @@ class NavButton(QPushButton):
         if self._active:
             self.setStyleSheet(f"QPushButton{{background:{ACCENT};border-radius:18px;border:none;}}")
             self._ico_lbl.setStyleSheet(
-                f"color:{PRIMARY};font-size:22px;background:transparent;border:none;padding:0;")
+                f"color:{PRIMARY};font-family:'Segoe MDL2 Assets';font-size:18px;"
+                f"background:transparent;border:none;text-decoration:none;padding:0;")
             self._txt_lbl.setStyleSheet(
                 f"color:{PRIMARY};font-size:15px;font-weight:700;background:transparent;border:none;")
         else:
@@ -54,7 +55,8 @@ class NavButton(QPushButton):
                 f"QPushButton{{background:transparent;border-radius:18px;border:none;}}"
                 f"QPushButton:hover{{background:#F0F4F8;}}")
             self._ico_lbl.setStyleSheet(
-                f"color:{TEXT_MUTED};font-size:22px;background:transparent;border:none;padding:0;")
+                f"color:{TEXT_MUTED};font-family:'Segoe MDL2 Assets';font-size:18px;"
+                f"background:transparent;border:none;text-decoration:none;padding:0;")
             self._txt_lbl.setStyleSheet(
                 f"color:{TEXT_MUTED};font-size:15px;font-weight:500;background:transparent;border:none;")
 
@@ -103,7 +105,7 @@ class AquariumApp(QMainWindow):
         nb.setFixedHeight(90)
         nbl = QHBoxLayout(nb); nbl.setContentsMargins(12, 6, 12, 6); nbl.setSpacing(6)
         self.nav = []
-        nav_items = [("🏠", "Dashboard"), ("📊", "Stats"), ("📅", "Schedule"), ("⚙️", "Settings")]
+        nav_items = [("", "Dashboard"), ("", "Stats"), ("", "Schedule"), ("", "Settings")]
         for i, (ico, lbl) in enumerate(nav_items):
             btn = NavButton(ico, lbl)
             btn.clicked.connect(lambda _, idx=i: self._switch(idx))
