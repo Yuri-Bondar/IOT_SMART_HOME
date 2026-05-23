@@ -12,6 +12,7 @@ import config
 light_on = False
 schedule_on  = "08:00"
 schedule_off = "22:00"
+last_fired   = ""
 
 TOPIC_LIGHT_SCHEDULE = config.TOPIC_PREFIX + "/config/light_schedule"
 
@@ -96,11 +97,17 @@ def main():
 
     try:
         while True:
-            scheduled = get_scheduled_state()
-            if scheduled != light_on:
-                light_on = scheduled
-                publish_light_status(client, light_on, "schedule")
-            time.sleep(10)
+            global last_fired
+            now_str = datetime.now().strftime("%H:%M")
+            tag_on  = "on@"  + schedule_on
+            tag_off = "off@" + schedule_off
+            if now_str == schedule_on and last_fired != tag_on:
+                last_fired = tag_on
+                publish_light_status(client, True, "schedule")
+            elif now_str == schedule_off and last_fired != tag_off:
+                last_fired = tag_off
+                publish_light_status(client, False, "schedule")
+            time.sleep(30)
 
     except KeyboardInterrupt:
         print("\nLight relay stopped.")
