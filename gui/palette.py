@@ -1,0 +1,13 @@
+PRIMARY    = "#0D4F5C"
+PRIMARY2   = "#1A7A8A"
+ACCENT     = "#00C4CC"
+BG         = "#F0F4F8"
+WHITE      = "#FFFFFF"
+TEXT_DARK  = "#1A2535"
+TEXT_MID   = "#4A5568"
+TEXT_MUTED = "#8B9BB4"
+SUCCESS    = "#00C896"
+WARNING    = "#FFB020"
+DANGER     = "#FF4757"
+
+CARD_STYLE = f"background:{WHITE}; border-radius:20px;"
