@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-Aquarium Monitor is an IoT system for real-time monitoring and control of a smart aquarium. It tracks water temperature and pH, automates feeding on a configurable schedule, controls the lighting relay, and issues warnings or alarms when sensor readings leave safe ranges. All data is stored locally in SQLite and displayed through a PyQt5 desktop GUI.
+Aquarium Monitor is a Python-based IoT system for real-time monitoring and control of a smart aquarium. Three hardware emulators — a temperature/pH sensor, an automatic feeder, and a light relay — communicate over MQTT with a data manager that logs all events to a local SQLite database and issues configurable warnings and alarms. A PyQt5 desktop GUI ties it all together, displaying live sensor data, controls, and a color-coded event log.
 
 ## System Architecture
 
