@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-Aquarium Monitor is a Python-based IoT system for real-time monitoring and control of a smart aquarium. Three hardware emulators — a temperature/pH sensor, an automatic feeder, and a light relay — communicate over MQTT with a data manager that logs all events to a local SQLite database and issues configurable warnings and alarms. A PyQt5 desktop GUI ties it all together, displaying live sensor data, controls, and a color-coded event log.
+Aquarium Monitor is a Python-based IoT system for real-time monitoring and control of a smart aquarium. Three hardware emulators - a temperature/pH sensor, an automatic feeder, and a light relay - communicate over MQTT with a data manager that logs all events to a local SQLite database and issues configurable warnings and alarms. A PyQt5 desktop GUI ties it all together, displaying live sensor data, controls, and a color-coded event log.
 
 ## System Architecture
 
@@ -34,7 +34,7 @@ The Stats page displays historical line charts for temperature and pH over a fix
 
 ### 3. Schedule
 
-The Schedule page manages the automatic feeding timetable — add, edit, enable/disable, or delete named feeding slots — and lets you set the light on/off times. All changes are persisted to the database and published to the relay via MQTT instantly.
+The Schedule page manages the automatic feeding timetable - add, edit, enable/disable, or delete named feeding slots - and lets you set the light on/off times. All changes are persisted to the database and published to the relay via MQTT instantly.
 
 <p align="center"><img src="Pictures/Schedule.png" width="400"></p>
 
@@ -46,14 +46,14 @@ The Settings page provides range sliders for adjusting the safe temperature and 
 
 ## Key Features
 
-- **Live sensor monitoring** — temperature and pH updated every 3 seconds with color-coded status (safe / warning / alarm)
-- **Three-tier alert system** — safe range, configurable warning buffer, and alarm outside safe bounds; alerts published over MQTT and logged to SQLite
-- **Dynamic feeding schedule** — named feeding slots stored in the database; the data manager fires feed commands automatically via a background thread
-- **Trigger-based light relay** — fires a single on/off event at the scheduled transition time; ignores schedule between transitions so manual overrides are respected
-- **Historical charts** — scrollable line charts with a 3-hour time axis and live target-range lines on the Stats page
-- **Persistent thresholds** — safe ranges and warning percentages survive restarts; the data manager loads saved values from the database at startup
-- **Live threshold sync** — slider changes in Settings publish immediately to the data manager over MQTT with no restart needed
-- **Personal MQTT channels** — each user sets a unique topic prefix via a `.env` file, preventing message collisions on the shared public broker
+- **Live sensor monitoring** - temperature and pH updated every 3 seconds with color-coded status (safe / warning / alarm)
+- **Three-tier alert system** - safe range, configurable warning buffer, and alarm outside safe bounds; alerts published over MQTT and logged to SQLite
+- **Dynamic feeding schedule** - named feeding slots stored in the database; the data manager fires feed commands automatically via a background thread
+- **Trigger-based light relay** - fires a single on/off event at the scheduled transition time; ignores schedule between transitions so manual overrides are respected
+- **Historical charts** - scrollable line charts with a 3-hour time axis and live target-range lines on the Stats page
+- **Persistent thresholds** - safe ranges and warning percentages survive restarts; the data manager loads saved values from the database at startup
+- **Live threshold sync** - slider changes in Settings publish immediately to the data manager over MQTT with no restart needed
+- **Personal MQTT channels** - each user sets a unique topic prefix via a `.env` file, preventing message collisions on the shared public broker
 
 ## Technology Stack
 
@@ -126,19 +126,19 @@ pip install -r requirements.txt
 **Run all five components in separate terminals**
 
 ```bash
-# Terminal 1 — data manager (start first so no messages are missed)
+# Terminal 1 - data manager (start first so no messages are missed)
 python data_manager/data_manager.py
 
-# Terminal 2 — temperature and pH sensor emulator
+# Terminal 2 - temperature and pH sensor emulator
 python emulators/temp_ph_sensor.py
 
-# Terminal 3 — feeding button emulator
+# Terminal 3 - feeding button emulator
 python emulators/feeding_button.py
 
-# Terminal 4 — light relay emulator
+# Terminal 4 - light relay emulator
 python emulators/light_relay.py
 
-# Terminal 5 — GUI application
+# Terminal 5 - GUI application
 python gui/main_gui.py
 ```
 
@@ -146,7 +146,7 @@ On Windows you can use `py` instead of `python`.
 
 ## MQTT Broker Setup
 
-The system uses the **HiveMQ public broker** — no account or password required.
+The system uses the **HiveMQ public broker** - no account or password required.
 
 | Setting | Value |
 |---------|-------|
